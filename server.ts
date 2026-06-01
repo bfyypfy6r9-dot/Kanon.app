@@ -13,6 +13,11 @@ import { createServer as createViteServer } from "vite";
 const app = express();
 const PORT = 3000;
 
+// Fila global para serializar todas as requisições ao Gemini e impor um delay de pelo menos 2 segundos entre as chamadas reais.
+// Como no Express as requisições paralelas rodam concorrentemente, o simples "await new Promise" de forma isolada
+// não impede que várias requisições acabem executando ao mesmo tempo. A fila abaixo garante a alternância sequencial.
+let geminiRequestQueue: Promise<any> = Promise.resolve();
+
 app.use(express.json());
 
 // File paths
@@ -267,9 +272,6 @@ app.post("/api/generate-section", async (req, res) => {
       return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
     }
 
-    // Delay de 2 segundos para evitar sobrecarga ou erro 503 na API do Gemini por requisições muito rápidas
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
     const ai = new GoogleGenAI({
       apiKey: apiKey,
       httpOptions: {
@@ -365,15 +367,30 @@ Não invente livros se não estiverem presentes nos textos fornecidos ou no cont
 `;
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: promptText,
-      config: {
-        systemInstruction: systemInstruction,
-      }
+    // Executamos a chamada ao Gemini de maneira serializada através da fila global,
+    // garantindo que cada requisição espere 2 segundos antes de iniciar e não ocorram chamadas simultâneas.
+    const responseText = await new Promise<string>((resolveQueue, rejectQueue) => {
+      geminiRequestQueue = geminiRequestQueue
+        .then(async () => {
+          // Espaçamento de 2 segundos garantido desde o fim do processamento anterior
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          const response = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: promptText,
+            config: {
+              systemInstruction: systemInstruction,
+            }
+          });
+
+          resolveQueue(response.text || "");
+        })
+        .catch((err) => {
+          rejectQueue(err);
+        });
     });
 
-    res.json({ success: true, text: response.text || "" });
+    res.json({ success: true, text: responseText });
 
   } catch (error: any) {
     console.error("Erro ao gerar seção:", error);
@@ -532,13 +549,26 @@ Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seg
 Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamente a verdade teológica dos textos sem inventar.
 `;
 
-    // 4. Query model
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: promptText,
+    // 4. Query model serializado na mesma fila global para proteger a API do Gemini
+    const responseText = await new Promise<string>((resolveQueue, rejectQueue) => {
+      geminiRequestQueue = geminiRequestQueue
+        .then(async () => {
+          // Espaçamento de 2 segundos garantido desde o fim do processamento anterior
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          const response = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: promptText,
+          });
+
+          resolveQueue(response.text || "");
+        })
+        .catch((err) => {
+          rejectQueue(err);
+        });
     });
 
-    const parsedText = response.text || "";
+    const parsedText = responseText;
 
     // 5. Slice responses back cleanly
     const extractedIntroducao = extractSection(parsedText, "[INTRODUCAO_START]", "[INTRODUCAO_END]") || (sections.introducao.mode === 'manual' ? sections.introducao.text : "Erro ao gerar introdução.");
