@@ -387,8 +387,8 @@ export default function App() {
       addParagraph(author, "italic", 11, "right");
       y += 2;
 
-      // 3. Passagem Bíblica (Right-aligned)
-      addParagraph(passage, "normal", 11, "right");
+      // 3. Passagem Bíblica (Left-aligned, right under the author)
+      addParagraph(passage, "normal", 11, "left");
       y += 8;
 
       // Section printing helper
@@ -540,7 +540,7 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-[9px] uppercase tracking-wider text-white/65 font-sans mb-1.5">Senha Pastoral</label>
+                    <label className="block text-[9px] uppercase tracking-wider text-white/65 font-sans mb-1.5">Senha</label>
                     <input
                       type="password"
                       required
