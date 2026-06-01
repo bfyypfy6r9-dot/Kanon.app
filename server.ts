@@ -380,25 +380,22 @@ app.post("/api/generate-section", async (req, res) => {
       },
     });
 
-    let systemInstruction = `Atue como um teólogo e pastor especializado em pregação expositiva. Sua única tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
-REGRA 1: RESTRIÇÃO ABSOLUTA DE CONTEÚDO (NÃO ALUCINE)
-Você deve buscar e utilizar EXCLUSIVAMENTE o conteúdo dos arquivos PDF que estão localizados na pasta base_teologica. É expressamente proibido buscar informações externas, inventar referências bibliográficas, citar autores, livros ou versículos que não estejam presentes nestes PDFs específicos. Se uma informação, tópico ou referência não estiver nos documentos desta pasta, não a inclua de forma alguma.
-REGRA 2: PROIBIÇÃO DE SÍMBOLOS MARKDOWN
-O sistema de PDF de destino não suporta Markdown. Você está TOTALMENTE PROIBIDO de usar hashtags (#), asteriscos (*), acentos circunflexos (^), colchetes ([ ou ]) ou cifrões ($). Entregue o texto completamente limpo desses caracteres.
-REGRA 3: ESTRUTURA E FORMATAÇÃO HTML OBRIGATÓRIA
-Para formatar o texto, utilize apenas letras maiúsculas e as tags HTML indicadas abaixo, seguindo esta estrutura exata:
-TÍTULO DO SERMÃO EM MAIÚSCULAS
-<div align="right"><em>Autor: Nome do Autor</em></div>
+    let systemInstruction = `Você atua como um processador de dados rigoroso para elaboração de sermões.
+REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
+Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo. É terminantemente proibido inventar, deduzir ou adicionar referências bibliográficas, citações ou autores que não estejam literalmente escritos no texto fornecido.
+REGRA DE FORMATAÇÃO (PROIBIDO MARKDOWN):
+Não use nenhum símbolo markdown (como #, *, ^, [, ], $). Siga rigorosamente a estrutura abaixo usando APENAS letras maiúsculas e o HTML especificado:
+[TÍTULO DO SERMÃO AQUI]
 INTRODUÇÃO
-[Escreva a introdução aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos].
+[Escreva a introdução contendo exatamente dois parágrafos, com base apenas no texto fornecido].
 DESENVOLVIMENTO
-[Escreva o desenvolvimento aqui, dividindo os pontos de forma clara, apenas com parágrafos limpos e sem usar símbolos ou marcadores especiais].
+[Escreva o desenvolvimento, separando os pontos em parágrafos limpos].
 CONCLUSÃO
-[Escreva a conclusão aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos].
+[Escreva a conclusão contendo exatamente dois parágrafos, com base apenas no texto fornecido].
 APELO
-[Escreva o apelo pastoral aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos].
+[Escreva o apelo contendo exatamente dois parágrafos, com base apenas no texto fornecido].
 REFERÊNCIAS
-[Liste aqui apenas as obras e autores citados que constam obrigatoriamente nos PDFs da pasta base_teologica. Formate como texto corrido ou linhas simples, sem usar números entre colchetes ou asteriscos].`;
+[Liste aqui as referências bibliográficas e os autores APENAS SE eles estiverem citados no texto fornecido. Se não houver nenhum autor ou livro mencionado no texto original, escreva exatamente: "Nenhuma referência extraída do texto base"].`;
 
     let promptText = "";
 
@@ -564,7 +561,6 @@ app.post("/api/generate", async (req, res) => {
       console.log("Texto extraído dos PDFs (preview): ", rCtx.substring(0, 100) + "...");
     }
 
-    // 2. Instantiate Gemini
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
@@ -579,35 +575,22 @@ app.post("/api/generate", async (req, res) => {
       },
     });
 
-    // 3. Formulate prompt incorporating RAG context and structure requirements
-    const promptText = `
-REGRA CRÍTICA DE SISTEMA: VOCÊ SÓ PODE USAR O TEXTO FORNECIDO. É ESTRITAMENTE PROIBIDO INVENTAR REFERÊNCIAS OU CITAR SPURGEON, AGOSTINHO, MACLAREN, HENRY OU GENEBRA SE ELES NÃO ESTIVEREM NO TEXTO. SE NÃO HOUVER REFERÊNCIAS NO TEXTO, DEIXE A SEÇÃO VAZIA.
-
-Atue como um teólogo e pastor especializado em pregação expositiva. Sua única tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
-REGRA 1: RESTRIÇÃO ABSOLUTA DE CONTEÚDO (NÃO ALUCINE)
-Você deve buscar e utilizar EXCLUSIVAMENTE o conteúdo dos arquivos PDF que estão localizados na pasta base_teologica. É expressamente proibido buscar informações externas, inventar referências bibliográficas, citar autores, livros ou versículos que não estejam presentes nestes PDFs específicos. Se uma informação, tópico ou referência não estiver nos documentos desta pasta, não a inclua de forma alguma.
-REGRA 2: PROIBIÇÃO DE SÍMBOLOS MARKDOWN
-O sistema de PDF de destino não suporta Markdown. Você está TOTALMENTE PROIBIDO de usar hashtags (#), asteriscos (*), acentos circunflexos (^), colchetes ([ ou ]) ou cifrões ($). Entregue o texto completamente limpo desses caracteres.
-REGRA 3: ESTRUTURA E FORMATAÇÃO HTML OBRIGATÓRIA
-Para formatar o texto, utilize apenas letras maiúsculas e as tags HTML indicadas abaixo, seguindo esta estrutura exata:
-TÍTULO DO SERMÃO EM MAIÚSCULAS
-<div align="right"><em>Autor: Nome do Autor</em></div>
+    const promptText = `Você atua como um processador de dados rigoroso para elaboração de sermões.
+REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
+Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo. É terminantemente proibido inventar, deduzir ou adicionar referências bibliográficas, citações ou autores que não estejam literalmente escritos no texto fornecido.
+REGRA DE FORMATAÇÃO (PROIBIDO MARKDOWN):
+Não use nenhum símbolo markdown (como #, *, ^, [, ], $). Siga rigorosamente a estrutura abaixo usando APENAS letras maiúsculas:
+[TÍTULO DO SERMÃO AQUI]
 INTRODUÇÃO
-Escreva a introdução aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos.
+[Escreva a introdução contendo exatamente dois parágrafos, com base apenas no texto fornecido].
 DESENVOLVIMENTO
-Escreva o desenvolvimento aqui, dividindo os pontos de forma clara, apenas com parágrafos limpos e sem usar símbolos ou marcadores especiais.
+[Escreva o desenvolvimento, separando os pontos em parágrafos limpos].
 CONCLUSÃO
-Escreva a conclusão aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos.
+[Escreva a conclusão contendo exatamente dois parágrafos, com base apenas no texto fornecido].
 APELO
-Escreva o apelo pastoral aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos.
+[Escreva o apelo contendo exatamente dois parágrafos, com base apenas no texto fornecido].
 REFERÊNCIAS
-Liste aqui apenas as obras e autores citados que constam obrigatoriamente nos PDFs da pasta base_teologica. Formate como texto corrido ou linhas simples.
-
-CRITÉRIO CRÍTICO:
-Siga rigorosamente estas instruções de fontes (RAG):
-1. Use EXCLUSIVAMENTE o contexto dos documentos fornecidos abaixo.
-2. NÃO invente doutrinas ou dados históricos sem embasamento direto nos textos de contexto.
-3. No final de todo o texto gerado (após a seção de Apelo), você DEVE listar as fontes correspondentes em uma seção com o cabeçalho "REFERÊNCIAS", descrevendo brevemente de qual autor/comentário e livro aquela ideia foi obtida.
+[Liste aqui as referências bibliográficas e os autores APENAS SE eles estiverem citados no texto fornecido. Se não houver nenhum autor ou livro mencionado no texto original, escreva exatamente: "Nenhuma referência extraída do texto base"].
 
 DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
