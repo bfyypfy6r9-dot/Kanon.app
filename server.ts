@@ -172,6 +172,8 @@ async function loadTheologicalContext(): Promise<string> {
   const results = await Promise.all(extractPromises);
   const context = results.filter((t) => t.trim() !== "").join("").trim();
   
+  console.log(`loadTheologicalContext final. Total files processed: ${files.length}. Context length: ${context.length}`);
+  
   return context;
 }
 
@@ -559,7 +561,7 @@ app.post("/api/generate", async (req, res) => {
 
     if (!rCtx || rCtx.trim() === "") {
       console.log("Nenhum texto encontrado nos PDFs. rCtx is empty.");
-      return res.status(400).json({ error: "Nenhum texto encontrado nos PDFs" });
+      return res.status(400).json({ error: "Nenhum texto encontrado nos PDFs. Se os seus PDFs forem livros escaneados (apenas imagens e sem camada de texto digital), a IA não conseguirá ler. Certifique-se de usar PDFs copiáveis ou converta-os para texto (.txt)." });
     } else {
       console.log("Texto extraído dos PDFs (preview): ", rCtx.substring(0, 100) + "...");
     }
