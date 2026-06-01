@@ -721,9 +721,9 @@ function createSermonDocx(
             ],
           }),
 
-          // PASSAGEM BÍBLICA ALINHADA À DIREITA
+          // PASSAGEM BÍBLICA ALINHADA À ESQUERDA (ABAIXO DO AUTOR)
           new Paragraph({
-            alignment: AlignmentType.RIGHT,
+            alignment: AlignmentType.LEFT,
             spacing: { after: 480 },
             children: [
               new TextRun({
