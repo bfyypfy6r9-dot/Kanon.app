@@ -611,8 +611,6 @@ export default function App() {
               Kanon.app
             </h1>
           </div>
-
-
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1" id="dashboard_grid">
@@ -846,7 +844,7 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <Download className="w-4 h-4 text-[#D4AF37]" />
+                        <Download className="w-4 h-4 text-[#D3AF37]" />
                         <span>Gerar Sermão em DOC</span>
                       </>
                     )}
@@ -879,7 +877,7 @@ export default function App() {
 
           {/* COLUNA DA DIREITA - PREVIEW DOS RESULTADOS COM ENGENHARIA DE DESIGN PREMIUM */}
           {(sermonResult || generating) && (
-            <div className="lg:col-span-5 space-y-6" id="preview_col">
+            <div className="lg:col-span-12 xl:col-span-5 space-y-6 animate-fade-in" id="preview_col">
               
               <AnimatePresence mode="wait">
                 {generating ? (
