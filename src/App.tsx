@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SermonResponse, UserSession } from "./types";
+import { jsPDF } from "jspdf";
 
 export default function App() {
   // Authentication state
@@ -32,22 +33,19 @@ export default function App() {
   const [author, setAuthor] = useState("Pr. João Santos");
   const [title, setTitle] = useState("A Liberdade Triunfante no Espírito de Deus");
 
-  // Four sections state config
-  const [introducaoMode, setIntroducaoMode] = useState<"ai" | "manual">("ai");
-  const [introducaoText, setIntroducaoText] = useState("");
+  // Global AI vs Manual Control
+  const [globalMode, setGlobalMode] = useState<"ai" | "manual">("ai");
 
-  const [desenvolvimentoMode, setDesenvolvimentoMode] = useState<"ai" | "manual">("ai");
+  // Content state for manual textareas
+  const [introducaoText, setIntroducaoText] = useState("");
   const [desenvolvimentoText, setDesenvolvimentoText] = useState("");
   const [desenvolvimentoPoints, setDesenvolvimentoPoints] = useState<number>(3);
-
-  const [conclusaoMode, setConclusaoMode] = useState<"ai" | "manual">("ai");
   const [conclusaoText, setConclusaoText] = useState("");
-
-  const [apeloMode, setApeloMode] = useState<"ai" | "manual">("ai");
   const [apeloText, setApeloText] = useState("");
 
   // UI state for sermon builder trigger
   const [generating, setGenerating] = useState(false);
+  const [generatingFormat, setGeneratingFormat] = useState<"doc" | "pdf" | null>(null);
   const [generatorError, setGeneratorError] = useState("");
   const [activeTab, setActiveTab] = useState<"introducao" | "desenvolvimento" | "conclusao" | "apelo" | "referencias">("introducao");
   const [sermonResult, setSermonResult] = useState<SermonResponse | null>(null);
@@ -116,8 +114,8 @@ export default function App() {
     setSermonResult(null);
   };
 
-  // Build Sermon and generate Word ABNT document
-  const handleBuildSermon = async () => {
+  // Build Sermon and generate Word ABNT document or Client-side PDF
+  const handleBuildSermon = async (format: "doc" | "pdf") => {
     setGeneratorError("");
     setSermonResult(null);
 
@@ -133,24 +131,27 @@ export default function App() {
     }
 
     // Validation for manual texts
-    if (introducaoMode === "manual" && !introducaoText.trim()) {
-      setGeneratorError("Você escolheu Introdução Manual, digite o texto da introdução.");
-      return;
-    }
-    if (desenvolvimentoMode === "manual" && !desenvolvimentoText.trim()) {
-      setGeneratorError("Você escolheu Desenvolvimento Manual, digite o texto do desenvolvimento.");
-      return;
-    }
-    if (conclusaoMode === "manual" && !conclusaoText.trim()) {
-      setGeneratorError("Você escolheu Conclusão Manual, digite o texto da conclusão.");
-      return;
-    }
-    if (apeloMode === "manual" && !apeloText.trim()) {
-      setGeneratorError("Você escolheu Apelo Manual, digite o texto do apelo.");
-      return;
+    if (globalMode === "manual") {
+      if (!introducaoText.trim()) {
+        setGeneratorError("Você escolheu Modo Manual, digite o texto da introdução.");
+        return;
+      }
+      if (!desenvolvimentoText.trim()) {
+        setGeneratorError("Você escolheu Modo Manual, digite o texto do desenvolvimento.");
+        return;
+      }
+      if (!conclusaoText.trim()) {
+        setGeneratorError("Você escolheu Modo Manual, digite o texto da conclusão.");
+        return;
+      }
+      if (!apeloText.trim()) {
+        setGeneratorError("Você escolheu Modo Manual, digite o texto do apelo.");
+        return;
+      }
     }
 
     setGenerating(true);
+    setGeneratingFormat(format);
 
     try {
       const payload = {
@@ -161,20 +162,20 @@ export default function App() {
         userEmail: currentUser.email,
         sections: {
           introducao: {
-            mode: introducaoMode,
-            text: introducaoMode === "manual" ? introducaoText : ""
+            mode: globalMode,
+            text: globalMode === "manual" ? introducaoText : ""
           },
           desenvolvimento: {
-            mode: desenvolvimentoMode,
-            text: desenvolvimentoMode === "manual" ? desenvolvimentoText : ""
+            mode: globalMode,
+            text: globalMode === "manual" ? desenvolvimentoText : ""
           },
           conclusao: {
-            mode: conclusaoMode,
-            text: conclusaoMode === "manual" ? conclusaoText : ""
+            mode: globalMode,
+            text: globalMode === "manual" ? conclusaoText : ""
           },
           apelo: {
-            mode: apeloMode,
-            text: apeloMode === "manual" ? apeloText : ""
+            mode: globalMode,
+            text: globalMode === "manual" ? apeloText : ""
           }
         }
       };
@@ -193,19 +194,27 @@ export default function App() {
       setSermonResult(data);
       // Automatically focus first tab
       setActiveTab("introducao");
+
+      // Action: Download file automatically after process completes
+      if (format === "doc") {
+        triggerDocxDownload(data);
+      } else {
+        triggerPdfDownload(data);
+      }
     } catch (err: any) {
       setGeneratorError(err.message || "Erro de conexão ao processar RAG teológico.");
     } finally {
       setGenerating(false);
+      setGeneratingFormat(null);
     }
   };
 
   // Trigger Word DOCX download directly
-  const handleDownloadDocx = () => {
-    if (!sermonResult || !sermonResult.docxBase64) return;
+  const triggerDocxDownload = (result: SermonResponse) => {
+    if (!result || !result.docxBase64) return;
 
     try {
-      const binaryString = atob(sermonResult.docxBase64);
+      const binaryString = atob(result.docxBase64);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
       for (let i = 0; i < len; i++) {
@@ -227,6 +236,117 @@ export default function App() {
     } catch (err) {
       console.error("Erro ao baixar arquivo Word:", err);
       alert("Ocorreu um erro ao decodificar e baixar o arquivo Word.");
+    }
+  };
+
+  // Trigger PDF client-side download using jsPDF under ABNT rules
+  const triggerPdfDownload = (result: SermonResponse) => {
+    if (!result) return;
+
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      const margin = 20;
+      let y = 30;
+      const pageHeight = doc.internal.pageSize.height;
+      const pageWidth = doc.internal.pageSize.width;
+      const contentWidth = pageWidth - (margin * 2);
+
+      // Paragraph printer wrapping text, handling page breaks and indenting first line
+      const addParagraph = (text: string, style: "normal" | "bold" | "italic" | "bolditalic" = "normal", size = 12, align: "left" | "right" | "center" = "left", isIndent = false) => {
+        doc.setFont("Helvetica", style);
+        doc.setFontSize(size);
+        
+        const lines = doc.splitTextToSize(text, contentWidth);
+        lines.forEach((line: string, index: number) => {
+          if (y + 10 > pageHeight - margin) {
+            doc.addPage();
+            y = 30;
+          }
+          
+          let xPos = margin;
+          if (align === "center") {
+            xPos = pageWidth / 2;
+          } else if (align === "right") {
+            xPos = pageWidth - margin;
+          } else if (index === 0 && isIndent) {
+            xPos += 12.5; // 1.25cm indent
+          }
+          
+          doc.text(line, xPos, y, { align: align });
+          y += 7.5; // approx 1.5 line height spacing
+        });
+        y += 3; // space after paragraph
+      };
+
+      // 1. Título do Sermão (ALL CAPS)
+      addParagraph(title.toUpperCase(), "bold", 14, "center");
+      y += 2;
+
+      // 2. Passagem Bíblica
+      addParagraph(passage, "normal", 12, "center");
+      y += 2;
+
+      // 3. Nome do Autor (Right-aligned, italic)
+      addParagraph(author, "italic", 11, "right");
+      y += 8;
+
+      // Section printing helper
+      const printSection = (sectionTitle: string, sectionText: string) => {
+        // Títulos de Seção: All in UPPERCASE and BOLD
+        addParagraph(sectionTitle.toUpperCase(), "bold", 12, "left");
+        y += 2;
+
+        const paragraphs = sectionText.split("\n");
+        paragraphs.forEach((p) => {
+          const trimmed = p.trim();
+          if (!trimmed) return;
+
+          // Pontos Internos do Desenvolvimento rule: Only first letter uppercase, entire text bolded
+          if (sectionTitle === "2. DESENVOLVIMENTO" && 
+              (/^(ponto|point)/i.test(trimmed) || /^\d+[\.\-\s]+ponto/i.test(trimmed) || /^\d+\.?\s+[A-Z]/i.test(trimmed))
+          ) {
+            const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+            addParagraph(formatted, "bold", 12, "left", false);
+          } else {
+            addParagraph(trimmed, "normal", 12, "left", true);
+          }
+        });
+        y += 5;
+      };
+
+      // Print normal sections
+      if (result.introducao) printSection("1. INTRODUÇÃO", result.introducao);
+      if (result.desenvolvimento) printSection("2. DESENVOLVIMENTO", result.desenvolvimento);
+      if (result.conclusao) printSection("3. CONCLUSÃO", result.conclusao);
+      if (result.apelo) printSection("4. APELO", result.apelo);
+
+      // Print references list
+      if (result.referencias) {
+        addParagraph("REFERÊNCIAS", "bold", 12, "left");
+        y += 2;
+        const refs = result.referencias.split("\n");
+        refs.forEach((refLine) => {
+          if (refLine.trim()) {
+            addParagraph(refLine.trim(), "normal", 10, "left", false);
+          }
+        });
+      }
+
+      doc.save(`Sermon_ABNT_${title.replace(/[^A-Za-z0-9]/g, "_")}.pdf`);
+    } catch (err) {
+      console.error("Erro ao gerar PDF:", err);
+      alert("Ocorreu um erro ao gerar o arquivo PDF.");
+    }
+  };
+
+  const handleDownloadDocx = () => {
+    if (sermonResult) {
+      triggerDocxDownload(sermonResult);
     }
   };
 
@@ -343,7 +463,7 @@ export default function App() {
                   )}
 
                   {authSuccess && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 p-3 text-xs flex items-start gap-1.5 font-sans">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-[#D4AF37] p-3 text-xs flex items-start gap-1.5 font-sans">
                       <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                       <span className="leading-snug">{authSuccess}</span>
                     </div>
@@ -375,7 +495,7 @@ export default function App() {
           <div className="mt-8 pt-6 border-t border-white/10" id="sidebar_footer">
             <div className="flex items-center gap-2 text-xs text-[#D4AF37] mb-2 font-display uppercase tracking-wide" id="theology_badge">
               <Award className="w-4 h-4" />
-              <span>Cânon & Tradição</span>
+              <span>Kanon.app</span>
             </div>
             <p className="text-[11px] text-white/60 leading-relaxed">
               "A tua palavra é lâmpada que ilumina os meus passos e luz que clareia o meu caminho." <span className="opacity-95 font-sans text-[10px] tracking-wider font-bold block mt-1">(Salmo 119:105)</span>
@@ -463,50 +583,55 @@ export default function App() {
               </div>
             </section>
 
+            {/* CONTROLE GLOBAL DE IA / MANUAL */}
+            <div className="bg-white border border-[#D1CEC5] p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" id="global_mode_control">
+              <div>
+                <h4 className="text-xs font-sans font-bold uppercase tracking-wider text-[#1A1A1A]">Método de Redação do Sermão</h4>
+                <p className="text-[10px] text-[#1A1A1A]/60 font-serif mt-0.5">Defina se todas as seções serão processadas pela IA Teológica ou inseridas manualmente.</p>
+              </div>
+              <div className="flex gap-2 text-[10px] font-sans shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setGlobalMode("ai")}
+                  className={`px-3.5 py-2 cursor-pointer font-bold tracking-wider transition-all border ${
+                    globalMode === "ai" 
+                      ? "bg-[#1A1A1A] text-white border-[#1A1A1A]" 
+                      : "border-[#D1CEC5] text-[#1A1A1A] opacity-60 hover:opacity-100 bg-transparent"
+                  }`}
+                >
+                  GERAR COM IA (COMPLETO)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGlobalMode("manual")}
+                  className={`px-3.5 py-2 cursor-pointer font-bold tracking-wider transition-all border ${
+                    globalMode === "manual" 
+                      ? "bg-[#1A1A1A] text-white border-[#1A1A1A]" 
+                      : "border-[#D1CEC5] text-[#1A1A1A] opacity-60 hover:opacity-100 bg-transparent"
+                  }`}
+                >
+                  DIGITAR MANUALMENTE
+                </button>
+              </div>
+            </div>
+
             {/* CARD 2: CONFIGURAÇÃO DE ESTRUTURA HOMILÉTICA COM MATRIZ DE DESTAQUES */}
             <section className="space-y-4" id="card_structure">
               
-              <div className="bg-white border border-[#D1CEC5] p-5 shadow-xs mb-6">
+              <div className="bg-white border border-[#D1CEC5] p-5 shadow-xs mb-4">
                 <h3 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#1A1A1A]/70 flex items-center gap-2 pb-2 border-b border-[#D1CEC5]">
                   <PenTool className="w-4 h-4 text-[#8B7E66]" />
                   2. Matriz de Estruturação Homilética
                 </h3>
-                <p className="text-xs text-[#1A1A1A]/60 mt-2">
-                  Selecione quais partes do discurso litúrgico deseja que o motor RAG de inteligência artificial escreva ou se você prefere digitar a sua própria exegese pessoal.
-                </p>
               </div>
 
               {/* PARTE 1: INTRODUÇÃO */}
               <div className="border border-[#D1CEC5] p-5 bg-white shadow-sm flex flex-col transition-all hover:border-[#1A1A1A]" id="intro_config_wrap">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold tracking-tight text-[#1A1A1A]">1. Introdução</h3>
-                  <div className="flex gap-2 text-[9px] font-sans">
-                    <button
-                      type="button"
-                      onClick={() => setIntroducaoMode("ai")}
-                      className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                        introducaoMode === "ai" 
-                          ? "bg-[#1A1A1A] text-white" 
-                          : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                      }`}
-                    >
-                      GERAR COM IA
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIntroducaoMode("manual")}
-                      className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                        introducaoMode === "manual" 
-                          ? "bg-[#1A1A1A] text-white" 
-                          : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                      }`}
-                    >
-                      MANUAL
-                    </button>
-                  </div>
                 </div>
 
-                {introducaoMode === "ai" ? (
+                {globalMode === "ai" ? (
                   <div className="bg-[#F9F8F5] border border-dashed border-[#D1CEC5] p-4 text-[11px] leading-relaxed text-[#1A1A1A]/65">
                     O motor RAG processará as referências da pasta <code className="bg-[#1A1A1A]/5 px-1 font-mono text-[10px] font-bold text-[#1A1A1A]">/base_teologica</code> para redigir uma introdução hermenêutica robusta baseada no contexto histórico.
                   </div>
@@ -516,7 +641,7 @@ export default function App() {
                     value={introducaoText}
                     onChange={(e) => setIntroducaoText(e.target.value)}
                     placeholder="Digite a síntese ou introdução teológica manualmente..."
-                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-none focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
+                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-[#D4AF37] focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
                   />
                 )}
               </div>
@@ -526,52 +651,25 @@ export default function App() {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold tracking-tight text-[#1A1A1A]">2. Desenvolvimento</h3>
                   
-                  <div className="flex items-center gap-4">
-                    {desenvolvimentoMode === "ai" && (
-                      <div className="flex items-center gap-2 border border-[#D1CEC5] px-2 py-1 bg-[#F9F8F5]">
-                        <span className="text-[8px] font-bold uppercase text-[#8B7E66] font-sans">Argumentos</span>
-                        <select
-                          value={desenvolvimentoPoints}
-                          onChange={(e) => setDesenvolvimentoPoints(Number(e.target.value))}
-                          className="bg-transparent border-none text-[11px] font-bold font-sans cursor-pointer focus:outline-none text-[#1A1A1A]"
-                        >
-                          <option value={1}>1 Ponto</option>
-                          <option value={2}>2 Pontos</option>
-                          <option value={3}>3 Pontos</option>
-                          <option value={4}>4 Pontos</option>
-                          <option value={5}>5 Pontos</option>
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 text-[9px] font-sans">
-                      <button
-                        type="button"
-                        onClick={() => setDesenvolvimentoMode("ai")}
-                        className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                          desenvolvimentoMode === "ai" 
-                            ? "bg-[#1A1A1A] text-white" 
-                            : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                        }`}
+                  {globalMode === "ai" && (
+                    <div className="flex items-center gap-2 border border-[#D1CEC5] px-2 py-1 bg-[#F9F8F5]">
+                      <span className="text-[8px] font-bold uppercase text-[#8B7E66] font-sans">Argumentos</span>
+                      <select
+                        value={desenvolvimentoPoints}
+                        onChange={(e) => setDesenvolvimentoPoints(Number(e.target.value))}
+                        className="bg-transparent border-none text-[11px] font-bold font-sans cursor-pointer focus:outline-none text-[#1A1A1A]"
                       >
-                        GERAR COM IA
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDesenvolvimentoMode("manual")}
-                        className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                          desenvolvimentoMode === "manual" 
-                            ? "bg-[#1A1A1A] text-white" 
-                            : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                        }`}
-                      >
-                        MANUAL
-                      </button>
+                        <option value={1}>1 Ponto</option>
+                        <option value={2}>2 Pontos</option>
+                        <option value={3}>3 Pontos</option>
+                        <option value={4}>4 Pontos</option>
+                        <option value={5}>5 Pontos</option>
+                      </select>
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {desenvolvimentoMode === "ai" ? (
+                {globalMode === "ai" ? (
                   <div className="bg-[#F9F8F5] border border-dashed border-[#D1CEC5] p-4 text-[11px] leading-relaxed text-[#1A1A1A]/70">
                     <p className="font-bold font-sans uppercase text-[9px] tracking-wider text-[#8B7E66] mb-2">Configuração RAG Teológica Ativa:</p>
                     <ul className="list-disc list-inside space-y-1.5 font-serif text-xs">
@@ -586,7 +684,7 @@ export default function App() {
                     value={desenvolvimentoText}
                     onChange={(e) => setDesenvolvimentoText(e.target.value)}
                     placeholder="Escreva os pontos estruturados do desenvolvimento aqui..."
-                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-none focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
+                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-[#D4AF37] focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
                   />
                 )}
               </div>
@@ -595,33 +693,9 @@ export default function App() {
               <div className="border border-[#D1CEC5] p-5 bg-white shadow-sm flex flex-col transition-all hover:border-[#1A1A1A]" id="conclusion_config_wrap">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold tracking-tight text-[#1A1A1A]">3. Conclusão</h3>
-                  <div className="flex gap-2 text-[9px] font-sans">
-                    <button
-                      type="button"
-                      onClick={() => setConclusaoMode("ai")}
-                      className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                        conclusaoMode === "ai" 
-                          ? "bg-[#1A1A1A] text-white" 
-                          : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                      }`}
-                    >
-                      GERAR COM IA
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConclusaoMode("manual")}
-                      className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                        conclusaoMode === "manual" 
-                          ? "bg-[#1A1A1A] text-white" 
-                          : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                      }`}
-                    >
-                      MANUAL
-                    </button>
-                  </div>
                 </div>
 
-                {conclusaoMode === "ai" ? (
+                {globalMode === "ai" ? (
                   <div className="bg-[#F9F8F5] border border-dashed border-[#D1CEC5] p-4 text-[11px] leading-relaxed text-[#1A1A1A]/65">
                     Gera a síntese exegética recapitulando os pontos ensinados de forma a consolidar a aplicação teológica literária.
                   </div>
@@ -631,7 +705,7 @@ export default function App() {
                     value={conclusaoText}
                     onChange={(e) => setConclusaoText(e.target.value)}
                     placeholder="Digite a síntese final do sermão aqui..."
-                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-none focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
+                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-[#D4AF37] focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
                   />
                 )}
               </div>
@@ -640,33 +714,9 @@ export default function App() {
               <div className="border border-[#D1CEC5] p-5 bg-white shadow-sm flex flex-col transition-all hover:border-[#1A1A1A]" id="apelo_config_wrap">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold tracking-tight text-[#1A1A1A]">4. Apelo e Aplicação</h3>
-                  <div className="flex gap-2 text-[9px] font-sans">
-                    <button
-                      type="button"
-                      onClick={() => setApeloMode("ai")}
-                      className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                        apeloMode === "ai" 
-                          ? "bg-[#1A1A1A] text-white" 
-                          : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                      }`}
-                    >
-                      GERAR COM IA
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setApeloMode("manual")}
-                      className={`px-3 py-1 cursor-pointer font-bold transition-all ${
-                        apeloMode === "manual" 
-                          ? "bg-[#1A1A1A] text-white" 
-                          : "border border-[#D1CEC5] text-[#1A1A1A] opacity-50 hover:opacity-100"
-                      }`}
-                    >
-                      MANUAL
-                    </button>
-                  </div>
                 </div>
 
-                {apeloMode === "ai" ? (
+                {globalMode === "ai" ? (
                   <div className="bg-[#F9F8F5] border border-dashed border-[#D1CEC5] p-4 text-[11px] leading-relaxed text-[#1A1A1A]/65">
                     Modo Assistente Ativo: Elaborará um apelo contundente, voltado à realidade espiritual e prática do rebanho contemporâneo.
                   </div>
@@ -676,7 +726,7 @@ export default function App() {
                     value={apeloText}
                     onChange={(e) => setApeloText(e.target.value)}
                     placeholder="Digite a aplicação prática pastoral aqui..."
-                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-none focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
+                    className="w-full bg-[#F9F8F5] border border-[#D1CEC5]/40 p-3 text-xs focus:outline-[#D4AF37] focus:border-[#D4AF37] text-[#1A1A1A] font-serif leading-relaxed"
                   />
                 )}
               </div>
@@ -687,7 +737,7 @@ export default function App() {
             <footer className="mt-8 pt-6 border-t border-[#D1CEC5] flex flex-col gap-4" id="main_trigger_card">
               
               {generatorError && (
-                <div className="bg-[#E23F3F]/10 border-2 border-[#E23F3F] text-[#E23F3F] p-4 text-xs flex items-start gap-2.5 font-sans tracking-wide">
+                <div className="bg-[#E23F3F]/10 border-2 border-[#E23F3F] text-[#E23F3F] p-4 text-xs flex items-start gap-2.5 font-sans tracking-wide col-span-2">
                   <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-[#E23F3F]" />
                   <div>
                     <strong className="block uppercase tracking-wider text-[10px]">Ação Bloqueada ou Erro de Compilação</strong>
@@ -696,7 +746,7 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center gap-2 text-[10px] font-sans">
                     <span className={`w-2 h-2 rounded-full ${currentUser ? "bg-emerald-600" : "bg-red-500"}`}></span>
@@ -710,21 +760,44 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="relative">
+                <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={handleBuildSermon}
+                    onClick={() => handleBuildSermon("doc")}
                     disabled={generating}
-                    className="bg-[#1A1A1A] hover:bg-neutral-800 active:bg-black text-white px-8 py-4 font-sans font-bold text-xs uppercase tracking-[0.2em] transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed border border-[#1A1A1A] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)]"
-                    id="btn_build_sermon"
+                    className="bg-[#1A1A1A] hover:bg-neutral-800 active:bg-black text-white px-5 py-4 font-sans font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed border border-[#1A1A1A] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)] select-none cursor-pointer"
+                    id="btn_build_sermon_doc"
                   >
-                    {generating ? (
+                    {generating && generatingFormat === "doc" ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Compilando...</span>
+                        <span>Compilando DOC...</span>
                       </>
                     ) : (
-                      <span>Construir Sermão e Gerar ABNT</span>
+                      <>
+                        <Download className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Gerar Sermão em DOC</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleBuildSermon("pdf")}
+                    disabled={generating}
+                    className="bg-[#D4AF37] hover:bg-[#C19B2D] active:bg-[#AA8825] text-black px-5 py-4 font-sans font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed border border-[#D4AF37] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)] select-none cursor-pointer"
+                    id="btn_build_sermon_pdf"
+                  >
+                    {generating && generatingFormat === "pdf" ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Compilando PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 text-black" />
+                        <span>Gerar Sermão em PDF</span>
+                      </>
                     )}
                   </button>
                 </div>
@@ -780,14 +853,25 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={handleDownloadDocx}
-                        className="w-full py-3 px-4 bg-[#1A1A1A] hover:bg-neutral-800 text-white font-sans font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,0.15)]"
-                        id="btn_download_docx_main"
-                      >
-                        <Download className="w-4 h-4 text-[#D4AF37]" />
-                        Baixar Arquivo Word (.DOCX ABNT)
-                      </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button
+                          onClick={handleDownloadDocx}
+                          className="w-full py-3 px-4 bg-[#1A1A1A] hover:bg-neutral-800 text-white font-sans font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,0.15)]"
+                          id="btn_download_docx_main"
+                        >
+                          <Download className="w-4 h-4 text-[#D4AF37]" />
+                          Baixar Word (.DOCX)
+                        </button>
+                        
+                        <button
+                          onClick={() => triggerPdfDownload(sermonResult)}
+                          className="w-full py-3 px-4 bg-[#D4AF37] hover:bg-[#C19B2D] text-black font-sans font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,0.15)]"
+                          id="btn_download_pdf_main"
+                        >
+                          <FileText className="w-4 h-4 text-black" />
+                          Baixar PDF
+                        </button>
+                      </div>
                       
                       <div className="mt-3 text-[10px] text-emerald-950 font-sans leading-relaxed bg-emerald-500/10 p-3 border border-emerald-500/20">
                         📏 <strong>Configuração ABNT Aplicada:</strong> Fontes Arial 12pt, Margens 3x3x2x2cm, espaçamento de linha de 1.5, início de parágrafo recuado em 1.25cm e referências de fim/rodapé indexadas.
@@ -855,7 +939,7 @@ export default function App() {
 
                         {activeTab === "apelo" && (
                           <div className="space-y-4" id="prev_apelo">
-                            <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">4. APELO PASTORAL</h4>
+                            <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">4. APELO</h4>
                             <p className="text-sm text-[#1A1A1A] leading-8 text-justify indent-[1.25cm] whitespace-pre-line font-serif">
                               {sermonResult.apelo}
                             </p>
