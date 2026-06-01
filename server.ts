@@ -139,28 +139,37 @@ function hashPassword(password: string): string {
 
 // Theology context loader for RAG
 async function loadTheologicalContext(): Promise<string> {
+  if (!fs.existsSync(BASE_TEOLOGICA_DIR)) {
+    return "";
+  }
+  
   const files = fs.readdirSync(BASE_TEOLOGICA_DIR);
-  let context = "";
-
-  for (const file of files) {
+  
+  const extractPromises = files.map(async (file) => {
     const filePath = path.join(BASE_TEOLOGICA_DIR, file);
     const ext = path.extname(file).toLowerCase();
 
     try {
       if (ext === ".pdf") {
-        const dataBuffer = fs.readFileSync(filePath);
+        const dataBuffer = await fs.promises.readFile(filePath);
         const parsed = await pdf(dataBuffer);
-        context += `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${parsed.text}\n`;
+        return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${parsed.text}\n`;
       } else if (ext === ".txt" || ext === ".md") {
-        const content = fs.readFileSync(filePath, "utf-8");
-        context += `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${content}\n`;
+        const content = await fs.promises.readFile(filePath, "utf-8");
+        return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${content}\n`;
       }
     } catch (err) {
       console.error(`Erro ao processar base de dados no arquivo: ${file}`, err);
+      // Pula para o próximo sem travar
+      return "";
     }
-  }
+    return "";
+  });
 
-  return context.trim();
+  const results = await Promise.all(extractPromises);
+  const context = results.join("").trim();
+  
+  return context;
 }
 
 // Parse text for footnotes markers e.g. [^1], [^2], converting them into TextRuns with superscripts for docx
