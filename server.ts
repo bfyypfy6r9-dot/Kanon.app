@@ -545,6 +545,13 @@ app.post("/api/generate", async (req, res) => {
     // 1. Gather files context
     const rCtx = await loadTheologicalContext();
 
+    if (!rCtx || rCtx.trim() === "") {
+      console.log("Nenhum texto encontrado nos PDFs. rCtx is empty.");
+      return res.status(400).json({ error: "Nenhum texto encontrado nos PDFs" });
+    } else {
+      console.log("Texto extraído dos PDFs (preview): ", rCtx.substring(0, 100) + "...");
+    }
+
     // 2. Instantiate Gemini
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -562,6 +569,8 @@ app.post("/api/generate", async (req, res) => {
 
     // 3. Formulate prompt incorporating RAG context and structure requirements
     const promptText = `
+REGRA CRÍTICA DE SISTEMA: VOCÊ SÓ PODE USAR O TEXTO FORNECIDO. É ESTRITAMENTE PROIBIDO INVENTAR REFERÊNCIAS OU CITAR SPURGEON, AGOSTINHO, MACLAREN, HENRY OU GENEBRA SE ELES NÃO ESTIVEREM NO TEXTO. SE NÃO HOUVER REFERÊNCIAS NO TEXTO, DEIXE A SEÇÃO VAZIA.
+
 Atue como um teólogo e pastor especializado em pregação expositiva. Sua única tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
 REGRA 1: RESTRIÇÃO ABSOLUTA DE CONTEÚDO (NÃO ALUCINE)
 Você deve buscar e utilizar EXCLUSIVAMENTE o conteúdo dos arquivos PDF que estão localizados na pasta base_teologica. É expressamente proibido buscar informações externas, inventar referências bibliográficas, citar autores, livros ou versículos que não estejam presentes nestes PDFs específicos. Se uma informação, tópico ou referência não estiver nos documentos desta pasta, não a inclua de forma alguma.
@@ -629,7 +638,7 @@ ${
 
 ----------------------------------------------------
 CONTEXTO TEOLÓGICO SEGURO (Fórmula RAG):
-${rCtx || "Nenhum livro de comentários eclesiásticos foi encontrado na pasta base_teologica. Como apoio teológico, use as verdades clássicas documentadas dos comentários de Romanos (Mclaren), Efésios, Salmo 23, Spurgeon e Matthew Henry que apoiam essa passagem."}
+${rCtx}
 ----------------------------------------------------
 
 Por favor, escreva o sermão de modo estruturado e polido.
