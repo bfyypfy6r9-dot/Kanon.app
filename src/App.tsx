@@ -899,7 +899,7 @@ export default function App() {
                     )}
 
                     <p className="text-white/60 text-xs max-w-sm leading-relaxed text-center font-serif mb-6">
-                      Aguarde enquanto consultamos a nossa <span className="text-[#D4AF37] font-sans font-bold not-italic tracking-wider text-[10px]">base_teologica_local</span>. Estamos cruzando referências cruzadas e erguendo argumentos puritanos legítimos.
+                      CONSTRUINDO
                     </p>
                     
                     <div className="w-full bg-[#F4F1EA]/10 border border-white/10 h-1.5 overflow-hidden max-w-[200px] mb-3">
