@@ -366,7 +366,14 @@ app.post("/api/generate-section", async (req, res) => {
       },
     });
 
-    let systemInstruction = `Você é um assistente teológico de altíssimo nível acadêmico e pastoral. Seu objetivo é apoiar um pregador a estruturar o sermão expositivo sobre a passagem "${passage}" (Tema: "${title}"). Use exclusivamente os textos de base teológica para a sua argumentação.`;
+    let systemInstruction = `Atue como um teólogo e pastor especializado em pregação expositiva. Sua tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
+REGRAS ESTRITAS DE FORMATAÇÃO (OBRIGATÓRIO):
+Nunca utilize blocos de código (como \`\`\`), colchetes com números (como [^1]), ou cifrões ($) nas suas respostas.
+O texto deve ser entregue limpo, pronto para ser copiado para um processador de texto.
+Use # para o Título Principal e ## para os subtópicos (Introdução, Desenvolvimento, Conclusão, Apelo).
+Logo abaixo do Título Principal, adicione o nome do autor obrigatoriamente usando esta estrutura exata de HTML para forçar o itálico e o alinhamento à direita:
+<div align="right"><em>Autor: [Nome do Autor]</em></div>
+As Referências Bibliográficas devem ser listadas no final do documento em formato de lista numerada simples, sem caracteres especiais quebrados.`;
 
     let promptText = "";
 
@@ -377,11 +384,15 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere uma Introdução profunda e impactante para este sermão bíblico expositivo com base nos comentários teológicos abaixo.
+Gere a Introdução para este sermão em apenas um ou dois parágrafos.
+Lembre-se de iniciar com:
+# ${title}
+<div align="right"><em>Autor: ${author}</em></div>
+
 CRITÉRIO CRÍTICO:
 1. Use estritamente o contexto fornecido abaixo.
-2. Insira marcações de notas de rodapé sequenciais exatamente no formato [^1], [^2], [^3] sempre que expor ou parafrasear uma ideia teológica dos comentários fornecidos.
-3. Não use títulos adicionais. Escreva um texto fluente e corrido.
+2. Siga as regras de formatação (sem colchetes de notas de rodapé, sem markdown de bloco de código).
+3. A introdução deve ser curta, contendo apenas um ou dois parágrafos.
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -393,10 +404,8 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e aplicação pastoral detalhados com base nos comentários teológicos abaixo.
-REGRA ESTRITA: Cada um dos pontos principais escolhidos DEVE obrigatoriamente conter exatamente 3 subtópicos explicativos (ordenados, por exemplo, por sub-pontos, itens ou letras a, b, c).
-Organize claramente cada um dos ${numPoints || 3} pontos de forma numerada.
-Insira notas de rodapé sequenciais no formato [^x] apropriado com base no contexto abaixo.
+Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos.
+Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -408,8 +417,8 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere uma Conclusão profunda e consolidada que amarre o sermão de volta ao tema central e passagem base. 
-Insira notas de rodapé sequenciais no formato [^x] adequado.
+Gere a Conclusão do sermão.
+Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -421,34 +430,24 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere um Apelo pastoral poderoso (uma chamada de fé, transformação moral, de ética ou de ação comunitária). 
-Insira notas de rodapé sequenciais no formato [^x] se aplicável.
+Gere o Apelo do sermão.
+Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
 `;
     } else if (section === "referencias") {
       promptText = `
-Gere a lista numerada de referências correspondentes às notas de rodapé citadas no sermão abaixo.
-Baseie-se puramente nos seguintes textos gerados e determine quais autores e comentários literários fornecidos foram citados.
+DADOS METADADOS DO SERMÃO DO CLIENTE:
+- Passagem Bíblica Base: "${passage}"
+- Autor do Sermão: "${author}"
+- Título Temático: "${title}"
 
-TEXTO DO SERMÃO GERADO ATÉ O MOMENTO:
---- INTRODUÇÃO ---
-${generatedTexts?.introducao || ""}
+Gere a lista numerada de referências consultadas no contexto.
+Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
 
---- DESENVOLVIMENTO ---
-${generatedTexts?.desenvolvimento || ""}
-
---- CONCLUSÃO ---
-${generatedTexts?.conclusao || ""}
-
---- APELO ---
-${generatedTexts?.apelo || ""}
-
-Lista numerada de Referências correspondentes no formato profissional (ABNT), por exemplo:
-1. Comentário Exegético Maclaren - Vol II, pág. 112 [Romanos 8:1]
-2. Comentário Bíblico de Genebra, Pág. 345 [Efésios 2:8]
-Não invente livros se não estiverem presentes nos textos fornecidos ou no contexto.
+CONTEXTO TEOLÓGICO SEGURO (RAG):
+${rCtx || "Comentários teológicos clássicos."}
 `;
     }
 
@@ -537,15 +536,20 @@ app.post("/api/generate", async (req, res) => {
 
     // 3. Formulate prompt incorporating RAG context and structure requirements
     const promptText = `
-Você é um assistente teológico de altíssimo nível acadêmico e pastoral.
-Seu objetivo é gerar o conteúdo de um sermão bíblico sob medida, utilizando exclusivamente as bases de comentários teológicos fornecidas abaixo.
+Atue como um teólogo e pastor especializado em pregação expositiva. Sua tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
+REGRAS ESTRITAS DE FORMATAÇÃO (OBRIGATÓRIO):
+Nunca utilize blocos de código (como \`\`\`), colchetes com números (como [^1]), ou cifrões ($) nas suas respostas.
+O texto deve ser entregue limpo, pronto para ser copiado para um processador de texto.
+Use # para o Título Principal e ## para os subtópicos (Introdução, Desenvolvimento, Conclusão, Apelo).
+Logo abaixo do Título Principal, adicione o nome do autor obrigatoriamente usando esta estrutura exata de HTML para forçar o itálico e o alinhamento à direita:
+<div align="right"><em>Autor: [Nome do Autor]</em></div>
+As Referências Bibliográficas devem ser listadas no final do documento em formato de lista numerada simples, sem caracteres especiais quebrados.
 
 CRITÉRIO CRÍTICO:
 Siga rigorosamente estas instruções de fontes (RAG):
 1. Use EXCLUSIVAMENTE o contexto dos documentos fornecidos abaixo.
 2. NÃO invente doutrinas ou dados históricos sem embasamento direto nos textos de contexto.
-3. Sempre que utilizar ou parafrasear uma ideia expressa nos comentários fornecidos, você DEVE citar inserindo uma marcação de nota de rodapé estilizada exatamente como [^1], [^2], [^3] no corpo do texto de forma sequencial.
-4. No final de todo o texto gerado (após a seção de Apelo), você DEVE listar as fontes correspondentes em uma seção com o cabeçalho "Referências", descrevendo brevemente de qual autor/comentário e livro (dentre os citados no contexto oficial abaixo) aquela ideia foi obtida.
+3. No final de todo o texto gerado (após a seção de Apelo), você DEVE listar as fontes correspondentes em uma seção com o cabeçalho "Referências", descrevendo brevemente de qual autor/comentário e livro aquela ideia foi obtida.
 
 DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
@@ -561,28 +565,28 @@ ESPECIFICAÇÕES DE CADA PARTE DA ESTRUTURA:
 Parte 1 - Introdução:
 ${
   sections.introducao.mode === "ai"
-    ? "O usuário selecionou [Gerar com IA]. Crie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. Insira as notas de rodapé [^x] sequenciais de forma impecável."
-    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.introducao.text}" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente). Se apropriado e se o texto tocar em ideias do contexto, você pode apenas inserir notas de rodapé no final das frases.`
+    ? `O usuário selecionou [Gerar com IA]. Crie a Introdução. Lembre-se de iniciar com:\n# ${title}\n<div align="right"><em>Autor: ${author}</em></div>\n\nCrie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo apenas um ou dois parágrafos.`
+    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.introducao.text}" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente).`
 }
 
 Parte 2 - Desenvolvimento:
 ${
   sections.desenvolvimento.mode === "ai"
-    ? `O usuário selecionou [Gerar com IA]. Crie o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e pastorais detalhados, baseados rigorosamente na exegese contida nos comentários teológicos do contexto. Organize claramente cada um dos ${numPoints || 3} pontos de forma ordenada e numerada. REGRA ESTRITA: Cada um dos pontos principais escolhidos DEVE obrigatoriamente conter exatamente 3 subtópicos explicativos (por exemplo, nomeados como sub-pontos, itens ou letras a, b, c). Insira notas de rodapé [^x] apropriadas.`
+    ? `O usuário selecionou [Gerar com IA]. Crie o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e pastorais detalhados, baseados rigorosamente na exegese contida nos comentários teológicos do contexto. Organize claramente cada um dos ${numPoints || 3} pontos de forma ordenada e numerada.`
     : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.desenvolvimento.text}" (Não altere este texto manual em hipótese alguma).`
 }
 
 Parte 3 - Conclusão:
 ${
   sections.conclusao.mode === "ai"
-    ? "O usuário selecionou [Gerar com IA]. Crie uma Conclusão profunda e consolidada que amarre o sermão de volta ao tema e à passagem central. Insira as notas de rodapé [^x] correspondentes."
+    ? "O usuário selecionou [Gerar com IA]. Crie uma Conclusão profunda e consolidada que amarre o sermão de volta ao tema e à passagem central."
     : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.conclusao.text}" (Não mexa no texto digitado).`
 }
 
 Parte 4 - Apelo:
 ${
   sections.apelo.mode === "ai"
-    ? "O usuário selecionou [Gerar com IA]. Crie um Apelo pastoral poderoso (uma chamada ética, transformação moral, de fé ou de ação comunitária) amparado no ensino textual exposto. Insira notas de rodapé [^x] se houver."
+    ? "O usuário selecionou [Gerar com IA]. Crie um Apelo pastoral poderoso (uma chamada ética, transformação moral, de fé ou de ação comunitária) amparado no ensino textual exposto."
     : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.apelo.text}" (Mantenha-o intacto).`
 }
 
