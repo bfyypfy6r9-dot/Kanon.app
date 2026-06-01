@@ -1,0 +1,6 @@
+{
+  "name": "Gerador de Sermões Bíblicos Estilo ABNT",
+  "description": "Aplicativo de alta fidelidade para pastores e líderes eclesiásticos criarem sermões expositivos e estruturados usando Inteligência Artificial (RAG no Gemini) integrados de forma direta a base de dados teológica local e com exportação estritamente em conformidade com as regras ABNT no Word.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
