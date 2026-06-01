@@ -156,133 +156,41 @@ export default function App() {
     setGenerationStage("Iniciando exegese do sermão...");
 
     try {
-      let generatedIntroducao = globalMode === "manual" ? introducaoText : "";
-      let generatedDesenvolvimento = globalMode === "manual" ? desenvolvimentoText : "";
-      let generatedConclusao = globalMode === "manual" ? conclusaoText : "";
-      let generatedApelo = globalMode === "manual" ? apeloText : "";
-      let generatedReferencias = "1. Banco de Dados Teológico Geral do Sistema.";
-
-      // We process sections sequentially using a for...of loop
-      const sectionsList = ["introducao", "desenvolvimento", "conclusao", "apelo", "referencias"] as const;
-
-      for (const section of sectionsList) {
-        if (section === "referencias") {
-          setGenerationStage("Compilando referências teológicas...");
-          const res = await fetch("/api/generate-section", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              section,
-              passage,
-              author,
-              title,
-              userEmail: currentUser.email,
-              generatedTexts: {
-                introducao: generatedIntroducao,
-                desenvolvimento: generatedDesenvolvimento,
-                conclusao: generatedConclusao,
-                apelo: generatedApelo
-              }
-            })
-          });
-
-          if (!res.ok) {
-            if (res.status === 503) {
-              throw new Error("O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.");
-            }
-            let errorMessage = "Erro de compilação teológica no Gemini.";
-            try {
-              const errData = await res.json();
-              errorMessage = errData.error || errorMessage;
-            } catch (e) {}
-            throw new Error(errorMessage);
-          }
-
-          const sectionData = await res.json();
-          generatedReferencias = sectionData.text;
-        } else {
-          const isAI = globalMode === "ai";
-          if (isAI) {
-            const sectionNamesMap: Record<string, string> = {
-              introducao: "Introdução",
-              desenvolvimento: "Desenvolvimento",
-              conclusao: "Conclusão",
-              apelo: "Apelo"
-            };
-            setGenerationStage(`Interpretando o texto da seção: ${sectionNamesMap[section]}...`);
-            
-            const res = await fetch("/api/generate-section", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                section,
-                passage,
-                author,
-                title,
-                numPoints: desenvolvimentoPoints,
-                userEmail: currentUser.email
-              })
-            });
-
-            if (!res.ok) {
-              if (res.status === 503) {
-                throw new Error(`O serviço de inteligência artificial está temporariamente indisponível (Erro 503) ao gerar a seção ${sectionNamesMap[section]}. Por favor, tente novamente em instantes.`);
-              }
-              let errorMessage = `Erro de compilação teológica ao gerar a seção ${sectionNamesMap[section]}.`;
-              try {
-                const errData = await res.json();
-                errorMessage = errData.error || errorMessage;
-              } catch (e) {}
-              throw new Error(errorMessage);
-            }
-
-            const sectionData = await res.json();
-            if (section === "introducao") generatedIntroducao = sectionData.text;
-            if (section === "desenvolvimento") generatedDesenvolvimento = sectionData.text;
-            if (section === "conclusao") generatedConclusao = sectionData.text;
-            if (section === "apelo") generatedApelo = sectionData.text;
-          }
+      const requestBody = {
+        passage,
+        author,
+        title,
+        numPoints: desenvolvimentoPoints,
+        userEmail: currentUser.email,
+        sections: {
+          introducao: { mode: globalMode, text: introducaoText },
+          desenvolvimento: { mode: globalMode, text: desenvolvimentoText },
+          conclusao: { mode: globalMode, text: conclusaoText },
+          apelo: { mode: globalMode, text: apeloText }
         }
-      }
+      };
 
-      setGenerationStage("Compondo e formatando documento ABNT...");
-
-      const bundleRes = await fetch("/api/bundle-docx", {
+      const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          passage,
-          author,
-          title,
-          introducao: generatedIntroducao,
-          desenvolvimento: generatedDesenvolvimento,
-          conclusao: generatedConclusao,
-          apelo: generatedApelo,
-          referencias: generatedReferencias,
-          userEmail: currentUser.email
-        })
+        body: JSON.stringify(requestBody)
       });
 
-      if (!bundleRes.ok) {
-        let errorMessage = "Erro ao estruturar e baixar o documento Word.";
+      if (!res.ok) {
+        if (res.status === 503) {
+          throw new Error("O serviço de inteligência artificial está temporariamente indisponível. Por favor, tente novamente em instantes.");
+        }
+        let errorMessage = "Erro na geração do sermão.";
         try {
-          const errData = await bundleRes.json();
+          const errData = await res.json();
           errorMessage = errData.error || errorMessage;
         } catch (e) {}
         throw new Error(errorMessage);
       }
 
-      const bundleData = await bundleRes.json();
+      setGenerationStage("Compondo e formatando documento final...");
+      const combinedResult: SermonResponse = await res.json();
 
-      const combinedResult: SermonResponse = {
-        success: true,
-        introducao: generatedIntroducao,
-        desenvolvimento: generatedDesenvolvimento,
-        conclusao: generatedConclusao,
-        apelo: generatedApelo,
-        referencias: generatedReferencias,
-        docxBase64: bundleData.docxBase64
-      };
 
       setSermonResult(combinedResult);
       setActiveTab("introducao");
