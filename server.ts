@@ -134,8 +134,29 @@ function hashPassword(password: string): string {
   return crypto.createHash("sha256").update(password).digest("hex");
 }
 
+function chunkText(text: string, source: string): { chunk: string; source: string }[] {
+  const paragraphs = text.split(/\n\s*\n/);
+  const chunks: { chunk: string; source: string }[] = [];
+  let currentChunk = "";
+  
+  for (const para of paragraphs) {
+    if (currentChunk.length + para.length > 2000) {
+      if (currentChunk.trim()) {
+        chunks.push({ chunk: currentChunk.trim(), source });
+      }
+      currentChunk = para + "\n\n";
+    } else {
+      currentChunk += para + "\n\n";
+    }
+  }
+  if (currentChunk.trim()) {
+    chunks.push({ chunk: currentChunk.trim(), source });
+  }
+  return chunks;
+}
+
 // Theology context loader for RAG
-async function loadTheologicalContext(): Promise<string> {
+async function loadTheologicalContext(passage: string, theme: string): Promise<string> {
   if (!fs.existsSync(BASE_TEOLOGICA_DIR)) {
     return "";
   }
@@ -152,25 +173,67 @@ async function loadTheologicalContext(): Promise<string> {
         const parser = new PDFParse({ data: dataBuffer });
         const result = await parser.getText();
         if (result && result.text) {
-          return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${result.text}\n`;
+          return chunkText(result.text, file);
         }
-        return "";
+        return [];
       } else if (ext === ".txt" || ext === ".md") {
         const content = await fs.promises.readFile(filePath, "utf-8");
-        return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${content}\n`;
+        return chunkText(content, file);
       }
     } catch (err: any) {
       console.error(`Erro ao processar base de dados no arquivo: ${file}. Detalhes: ${err.message}`, err);
       // Pula para o próximo sem travar
-      return "";
+      return [];
     }
-    return "";
+    return [];
   });
 
-  const results = await Promise.all(extractPromises);
-  const context = results.filter((t) => t.trim() !== "").join("").trim();
+  const arraysOfChunks = await Promise.all(extractPromises);
+  const allChunks = arraysOfChunks.flat();
+
+  // 2. Mecanismo de Busca (Scoring)
+  const searchTerms = [passage, theme].join(" ")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
+    .split(/\W+/)
+    .filter(w => w.length > 3);
   
-  console.log(`loadTheologicalContext final. Total files processed: ${files.length}. Context length: ${context.length}`);
+  const scoredChunks = allChunks.map(c => {
+    const textLower = c.chunk.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    let score = 0;
+    for (const term of searchTerms) {
+      const regex = new RegExp(`\\b${term}`, 'g');
+      const matches = textLower.match(regex);
+      if (matches) {
+        score += matches.length;
+      }
+    }
+    // Boost on exact passage phrase match
+    if (passage && textLower.includes(passage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) {
+      score += 10;
+    }
+    return { ...c, score };
+  });
+
+  // Sort by highest score backwards
+  scoredChunks.sort((a, b) => b.score - a.score);
+
+  // 3. Limite de Segurança (Top-K) ~ 50,000 characters
+  let accumulatedLength = 0;
+  const selectedChunks = [];
+  
+  for (const item of scoredChunks) {
+    const formattedChunk = `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${item.source} ---\n${item.chunk}\n`;
+    if (accumulatedLength + formattedChunk.length > 50000) {
+      break;
+    }
+    selectedChunks.push(formattedChunk);
+    accumulatedLength += formattedChunk.length;
+  }
+
+  const context = selectedChunks.join("").trim();
+  
+  console.log(`RAG Local final: Retornando ${selectedChunks.length} chunks de ${allChunks.length} totais. Tamanho final: ${context.length} caracteres.`);
   
   return context;
 }
@@ -365,7 +428,7 @@ app.post("/api/generate-section", async (req, res) => {
       return res.status(400).json({ error: "Campos obrigatórios (Passagem, Autor e Título) ausentes." });
     }
 
-    const rCtx = await loadTheologicalContext();
+    const rCtx = await loadTheologicalContext(passage, title);
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
@@ -552,7 +615,7 @@ app.post("/api/generate", async (req, res) => {
     }
 
     // 1. Gather files context
-    const rCtx = await loadTheologicalContext();
+    const rCtx = await loadTheologicalContext(passage, title);
 
     if (!rCtx || rCtx.trim() === "") {
       console.log("Nenhum texto encontrado nos PDFs. rCtx is empty.");
