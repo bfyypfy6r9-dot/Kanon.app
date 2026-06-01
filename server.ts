@@ -446,19 +446,42 @@ app.post("/api/generate-section", async (req, res) => {
     let systemInstruction = `Você atua como um processador de dados rigoroso para elaboração de sermões.
 REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
 Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo. É terminantemente proibido inventar, deduzir ou adicionar referências bibliográficas, citações ou autores que não estejam literalmente escritos no texto fornecido.
-REGRA DE FORMATAÇÃO (PROIBIDO MARKDOWN):
-Não use nenhum símbolo markdown (como #, *, ^, [, ], $). Siga rigorosamente a estrutura abaixo usando APENAS letras maiúsculas e o HTML especificado:
-[TÍTULO DO SERMÃO AQUI]
+REGRA DE FORMATAÇÃO (LAYOUT OBRIGATÓRIO):
+Você é um assistente teológico profissional. A sua saída de texto deve ser rigorosamente limpa, acadêmica e seguir exatamente a estrutura do documento padrão abaixo.
+REGRAS DE BLOQUEIO (NÃO FAÇA ISSO):
+- NUNCA repita o título, autor ou texto bíblico no meio do sermão. Eles pertencem APENAS ao cabeçalho.
+- NUNCA use formatação Markdown como #, ## ou *. Use apenas as tags HTML permitidas (<b> para negrito e <br> para quebra de linha).
+- NUNCA crie textos corridos longos no Desenvolvimento. Use obrigatoriamente a estrutura de tópicos numerados seguidos de marcadores (bullet points ou •).
+
+ESTRUTURA DE SAÍDA EXIGIDA:
+Reproduza exatamente este esqueleto em todas as suas respostas, usando APENAS as seções que você foi solicitado a gerar (se estiver gerando apenas uma seção, retorne apenas ela formatada assim):
+
+TEXTO - [Referência Bíblica]
+[TÍTULO DO SERMÃO EM MAIÚSCULAS]
+[Nome do Autor]
+
 INTRODUÇÃO
-[Escreva a introdução contendo exatamente dois parágrafos, com base apenas no texto fornecido].
+[Primeiro parágrafo da introdução, direto ao assunto]
+[Segundo parágrafo da introdução]
+[Terceiro parágrafo da introdução]
+
 DESENVOLVIMENTO
-[Escreva o desenvolvimento, separando os pontos em parágrafos limpos].
+1. [Título do Primeiro Ponto Aqui]:
+• [Primeira explicação, aplicação ou versículo de apoio]
+• [Segunda explicação, aplicação ou versículo de apoio]
+• [Terceira explicação, aplicação ou versículo de apoio]
+(Continue a numeração em tags <b> até o limite de pontos necessários)
+
 CONCLUSÃO
-[Escreva a conclusão contendo exatamente dois parágrafos, com base apenas no texto fornecido].
+[Primeiro parágrafo da conclusão]
+[Segundo parágrafo da conclusão]
+
 APELO
-[Escreva o apelo contendo exatamente dois parágrafos, com base apenas no texto fornecido].
+• [Primeiro ponto do apelo final]
+• [Segundo ponto do apelo final]
+
 REFERÊNCIAS
-[Liste aqui as referências bibliográficas e os autores APENAS SE eles estiverem citados no texto fornecido. Se não houver nenhum autor ou livro mencionado no texto original, escreva exatamente: "Nenhuma referência extraída do texto base"].`;
+[Liste os autores e materiais citados no texto base].`;
 
     let promptText = "";
 
@@ -470,10 +493,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Título Temático: "${title}"
 
 Gere a Introdução para este sermão em apenas um ou dois parágrafos.
-Lembre-se de iniciar com:
-${title.toUpperCase()}
-<div align="right"><em>Autor: ${author}</em></div>
-INTRODUÇÃO
+Lembre-se de ir direto ao ponto, não escreva cabeçalhos de título ou autor.
 
 CRITÉRIO CRÍTICO:
 1. Use estritamente o contexto fornecido abaixo.
@@ -491,8 +511,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Título Temático: "${title}"
 
 Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos.
-Lembre-se de iniciar com:
-DESENVOLVIMENTO
+Lembre-se de ir direto ao ponto, não escreva cabeçalhos de título, comece direto pelo primeiro tópico.
 
 Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
 
@@ -507,8 +526,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Título Temático: "${title}"
 
 Gere a Conclusão do sermão. Ela deve conter exatamente 2 (dois) parágrafos.
-Lembre-se de iniciar com:
-CONCLUSÃO
+Lembre-se de ir direto ao ponto, não escreva o cabeçalho 'CONCLUSÃO'.
 
 Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
 
@@ -523,8 +541,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Título Temático: "${title}"
 
 Gere o Apelo do sermão. Ele deve conter exatamente 2 (dois) parágrafos.
-Lembre-se de iniciar com:
-APELO
+Lembre-se de ir direto ao final, não escreva o cabeçalho 'APELO'.
 
 Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
 
@@ -539,8 +556,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Título Temático: "${title}"
 
 Gere a lista de referências consultadas no contexto. Formate como texto corrido ou linhas simples.
-Lembre-se de iniciar com:
-REFERÊNCIAS
+Lembre-se de não adicionar o título 'REFERÊNCIAS'.
 
 Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem números entre colchetes).
 
@@ -641,19 +657,41 @@ app.post("/api/generate", async (req, res) => {
     const promptText = `Você atua como um processador de dados rigoroso para elaboração de sermões.
 REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
 Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo. É terminantemente proibido inventar, deduzir ou adicionar referências bibliográficas, citações ou autores que não estejam literalmente escritos no texto fornecido.
-REGRA DE FORMATAÇÃO (PROIBIDO MARKDOWN):
-Não use nenhum símbolo markdown (como #, *, ^, [, ], $). Siga rigorosamente a estrutura abaixo usando APENAS letras maiúsculas:
-[TÍTULO DO SERMÃO AQUI]
+REGRA DE FORMATAÇÃO (LAYOUT OBRIGATÓRIO):
+Você é um assistente teológico profissional. A sua saída de texto deve ser rigorosamente limpa, acadêmica e a estrutura dos pontos deve ser respeitada.
+REGRAS DE BLOQUEIO (NÃO FAÇA ISSO):
+- NUNCA repita o título, autor ou texto bíblico no meio do sermão. Eles pertencem APENAS ao cabeçalho externo.
+- NUNCA use formatação Markdown como #, ## ou *. Use APENAS as tags HTML permitidas (<b> para negrito e <br> para quebra de linha).
+- NUNCA crie textos corridos longos no Desenvolvimento. Use OBRIGATORIAMENTE a estrutura de tópicos numerados seguidos de marcadores (bullet points com a bolinha •).
+
+ESTRUTURA DE SAÍDA EXIGIDA:
+Sua resposta comporá cada parte do documento separadamente. Siga os padrões internos para o conteúdo de cada bloco de texto:
+
 INTRODUÇÃO
-[Escreva a introdução contendo exatamente dois parágrafos, com base apenas no texto fornecido].
+[Gere o texto introdutório. Não coloque subtítulos ou cabeçalhos. Vá direto para os parágrafos.]
+
 DESENVOLVIMENTO
-[Escreva o desenvolvimento, separando os pontos em parágrafos limpos].
+(Formato obrigatório para o conteúdo do Desenvolvimento):
+1. <b>[Título do Primeiro Ponto Aqui]</b>:
+• [Primeira explicação, aplicação ou versículo de apoio]
+• [Segunda explicação, aplicação ou versículo de apoio]
+• [Terceira explicação, aplicação ou versículo de apoio]
+
+2. <b>[Título do Segundo Ponto Aqui]</b>:
+• [Primeira explicação, aplicação ou versículo de apoio]
+• [Segunda explicação, aplicação ou versículo de apoio]
+(Continue com este mesmo padrão exato para todos os pontos)
+
 CONCLUSÃO
-[Escreva a conclusão contendo exatamente dois parágrafos, com base apenas no texto fornecido].
+[Gere os parágrafos da conclusão de forma fluida]
+
 APELO
-[Escreva o apelo contendo exatamente dois parágrafos, com base apenas no texto fornecido].
+(Formato obrigatório para o Apelo):
+• [Primeiro ponto do apelo final]
+• [Segundo ponto do apelo final]
+
 REFERÊNCIAS
-[Liste aqui as referências bibliográficas e os autores APENAS SE eles estiverem citados no texto fornecido. Se não houver nenhum autor ou livro mencionado no texto original, escreva exatamente: "Nenhuma referência extraída do texto base"].
+[Liste os autores e materiais citados APENAS SE houver referências. Siga como texto corrido na base, sem marcadores de asterisco ou chaves].
 
 DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
@@ -669,28 +707,28 @@ ESPECIFICAÇÕES DE CADA PARTE DA ESTRUTURA:
 Parte 1 - Introdução:
 ${
   sections.introducao.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie a Introdução. Lembre-se de iniciar com:\n" + title.toUpperCase() + "\n<div align=\"right\"><em>Autor: " + author + "</em></div>\n\nINTRODUÇÃO\n\nCrie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo exatamente 2 (dois) parágrafos."
+    ? "O usuário selecionou Gerar com IA. Crie a Introdução. Crie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo exatamente 2 (dois) parágrafos. NÃO escreva título ou autor nela."
     : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.introducao.text + "\" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente)."
 }
 
 Parte 2 - Desenvolvimento:
 ${
   sections.desenvolvimento.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " + (numPoints || 3) + " pontos teológicos detalhados. Inicie a seção com:\nDESENVOLVIMENTO"
+    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " + (numPoints || 3) + " pontos teológicos detalhados. NÃO escreva a palavra 'Desenvolvimento', comece direto do primeiro ponto numerado."
     : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.desenvolvimento.text + "\" (Não altere este texto manual em hipótese alguma)."
 }
 
 Parte 3 - Conclusão:
 ${
   sections.conclusao.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie uma Conclusão profunda e consolidada em exatamente 2 (dois) parágrafos. Inicie a seção com:\nCONCLUSÃO"
+    ? "O usuário selecionou Gerar com IA. Crie uma Conclusão profunda e consolidada em exatamente 2 (dois) parágrafos. NÃO escreva a palavra 'Conclusão', comece o texto direto."
     : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.conclusao.text + "\" (Não mexa no texto digitado)."
 }
 
 Parte 4 - Apelo:
 ${
   sections.apelo.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie um Apelo pastoral poderoso em exatamente 2 (dois) parágrafos. Inicie a seção com:\nAPELO"
+    ? "O usuário selecionou Gerar com IA. Crie um Apelo pastoral poderoso em exatamente 2 (dois) parágrafos. NÃO escreva o encabeçamento 'Apelo', comece com os tópicos direto."
     : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.apelo.text + "\" (Mantenha-o intacto)."
 }
 
