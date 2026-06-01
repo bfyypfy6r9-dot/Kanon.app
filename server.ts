@@ -54,7 +54,9 @@ async function queryGeminiWithRetry(
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      const config: any = {};
+      const config: any = {
+        temperature: 0,
+      };
       if (systemInstruction) {
         config.systemInstruction = systemInstruction;
       }
@@ -366,14 +368,25 @@ app.post("/api/generate-section", async (req, res) => {
       },
     });
 
-    let systemInstruction = `Atue como um teólogo e pastor especializado em pregação expositiva. Sua tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
-REGRAS ESTRITAS DE FORMATAÇÃO (OBRIGATÓRIO):
-Nunca utilize blocos de código (como \`\`\`), colchetes com números (como [^1]), ou cifrões ($) nas suas respostas.
-O texto deve ser entregue limpo, pronto para ser copiado para um processador de texto.
-Use # para o Título Principal e ## para os subtópicos (Introdução, Desenvolvimento, Conclusão, Apelo).
-Logo abaixo do Título Principal, adicione o nome do autor obrigatoriamente usando esta estrutura exata de HTML para forçar o itálico e o alinhamento à direita:
-<div align="right"><em>Autor: [Nome do Autor]</em></div>
-As Referências Bibliográficas devem ser listadas no final do documento em formato de lista numerada simples, sem caracteres especiais quebrados.`;
+    let systemInstruction = `Atue como um teólogo e pastor especializado em pregação expositiva. Sua única tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
+REGRA 1: RESTRIÇÃO ABSOLUTA DE CONTEÚDO (NÃO ALUCINE)
+Você deve buscar e utilizar EXCLUSIVAMENTE o conteúdo dos arquivos PDF que estão localizados na pasta base_teologica. É expressamente proibido buscar informações externas, inventar referências bibliográficas, citar autores, livros ou versículos que não estejam presentes nestes PDFs específicos. Se uma informação, tópico ou referência não estiver nos documentos desta pasta, não a inclua de forma alguma.
+REGRA 2: PROIBIÇÃO DE SÍMBOLOS MARKDOWN
+O sistema de PDF de destino não suporta Markdown. Você está TOTALMENTE PROIBIDO de usar hashtags (#), asteriscos (*), acentos circunflexos (^), colchetes ([ ou ]) ou cifrões ($). Entregue o texto completamente limpo desses caracteres.
+REGRA 3: ESTRUTURA E FORMATAÇÃO HTML OBRIGATÓRIA
+Para formatar o texto, utilize apenas letras maiúsculas e as tags HTML indicadas abaixo, seguindo esta estrutura exata:
+TÍTULO DO SERMÃO EM MAIÚSCULAS
+<div align="right"><em>Autor: Nome do Autor</em></div>
+INTRODUÇÃO
+[Escreva a introdução aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos].
+DESENVOLVIMENTO
+[Escreva o desenvolvimento aqui, dividindo os pontos de forma clara, apenas com parágrafos limpos e sem usar símbolos ou marcadores especiais].
+CONCLUSÃO
+[Escreva a conclusão aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos].
+APELO
+[Escreva o apelo pastoral aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos].
+REFERÊNCIAS
+[Liste aqui apenas as obras e autores citados que constam obrigatoriamente nos PDFs da pasta base_teologica. Formate como texto corrido ou linhas simples, sem usar números entre colchetes ou asteriscos].`;
 
     let promptText = "";
 
@@ -386,13 +399,14 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 
 Gere a Introdução para este sermão em apenas um ou dois parágrafos.
 Lembre-se de iniciar com:
-# ${title}
+${title.toUpperCase()}
 <div align="right"><em>Autor: ${author}</em></div>
+INTRODUÇÃO
 
 CRITÉRIO CRÍTICO:
 1. Use estritamente o contexto fornecido abaixo.
-2. Siga as regras de formatação (sem colchetes de notas de rodapé, sem markdown de bloco de código).
-3. A introdução deve ser curta, contendo apenas um ou dois parágrafos.
+2. Siga as regras de formatação (sem markdown, sem símbolos).
+3. A introdução deve conter exatamente 2 parágrafos.
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -405,7 +419,10 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Título Temático: "${title}"
 
 Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos.
-Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
+Lembre-se de iniciar com:
+DESENVOLVIMENTO
+
+Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -417,8 +434,11 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere a Conclusão do sermão.
-Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
+Gere a Conclusão do sermão. Ela deve conter exatamente 2 (dois) parágrafos.
+Lembre-se de iniciar com:
+CONCLUSÃO
+
+Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -430,8 +450,11 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere o Apelo do sermão.
-Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
+Gere o Apelo do sermão. Ele deve conter exatamente 2 (dois) parágrafos.
+Lembre-se de iniciar com:
+APELO
+
+Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -443,8 +466,11 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere a lista numerada de referências consultadas no contexto.
-Siga as regras de formatação estritas (sem blocos de código, sem [^1]).
+Gere a lista de referências consultadas no contexto. Formate como texto corrido ou linhas simples.
+Lembre-se de iniciar com:
+REFERÊNCIAS
+
+Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem números entre colchetes).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -536,20 +562,31 @@ app.post("/api/generate", async (req, res) => {
 
     // 3. Formulate prompt incorporating RAG context and structure requirements
     const promptText = `
-Atue como um teólogo e pastor especializado em pregação expositiva. Sua tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
-REGRAS ESTRITAS DE FORMATAÇÃO (OBRIGATÓRIO):
-Nunca utilize blocos de código (como \`\`\`), colchetes com números (como [^1]), ou cifrões ($) nas suas respostas.
-O texto deve ser entregue limpo, pronto para ser copiado para um processador de texto.
-Use # para o Título Principal e ## para os subtópicos (Introdução, Desenvolvimento, Conclusão, Apelo).
-Logo abaixo do Título Principal, adicione o nome do autor obrigatoriamente usando esta estrutura exata de HTML para forçar o itálico e o alinhamento à direita:
-<div align="right"><em>Autor: [Nome do Autor]</em></div>
-As Referências Bibliográficas devem ser listadas no final do documento em formato de lista numerada simples, sem caracteres especiais quebrados.
+Atue como um teólogo e pastor especializado em pregação expositiva. Sua única tarefa é estruturar e redigir sermões com base nos documentos teológicos fornecidos.
+REGRA 1: RESTRIÇÃO ABSOLUTA DE CONTEÚDO (NÃO ALUCINE)
+Você deve buscar e utilizar EXCLUSIVAMENTE o conteúdo dos arquivos PDF que estão localizados na pasta base_teologica. É expressamente proibido buscar informações externas, inventar referências bibliográficas, citar autores, livros ou versículos que não estejam presentes nestes PDFs específicos. Se uma informação, tópico ou referência não estiver nos documentos desta pasta, não a inclua de forma alguma.
+REGRA 2: PROIBIÇÃO DE SÍMBOLOS MARKDOWN
+O sistema de PDF de destino não suporta Markdown. Você está TOTALMENTE PROIBIDO de usar hashtags (#), asteriscos (*), acentos circunflexos (^), colchetes ([ ou ]) ou cifrões ($). Entregue o texto completamente limpo desses caracteres.
+REGRA 3: ESTRUTURA E FORMATAÇÃO HTML OBRIGATÓRIA
+Para formatar o texto, utilize apenas letras maiúsculas e as tags HTML indicadas abaixo, seguindo esta estrutura exata:
+TÍTULO DO SERMÃO EM MAIÚSCULAS
+<div align="right"><em>Autor: Nome do Autor</em></div>
+INTRODUÇÃO
+Escreva a introdução aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos.
+DESENVOLVIMENTO
+Escreva o desenvolvimento aqui, dividindo os pontos de forma clara, apenas com parágrafos limpos e sem usar símbolos ou marcadores especiais.
+CONCLUSÃO
+Escreva a conclusão aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos.
+APELO
+Escreva o apelo pastoral aqui. É obrigatório que esta seção tenha exatamente 2 (dois) parágrafos.
+REFERÊNCIAS
+Liste aqui apenas as obras e autores citados que constam obrigatoriamente nos PDFs da pasta base_teologica. Formate como texto corrido ou linhas simples.
 
 CRITÉRIO CRÍTICO:
 Siga rigorosamente estas instruções de fontes (RAG):
 1. Use EXCLUSIVAMENTE o contexto dos documentos fornecidos abaixo.
 2. NÃO invente doutrinas ou dados históricos sem embasamento direto nos textos de contexto.
-3. No final de todo o texto gerado (após a seção de Apelo), você DEVE listar as fontes correspondentes em uma seção com o cabeçalho "Referências", descrevendo brevemente de qual autor/comentário e livro aquela ideia foi obtida.
+3. No final de todo o texto gerado (após a seção de Apelo), você DEVE listar as fontes correspondentes em uma seção com o cabeçalho "REFERÊNCIAS", descrevendo brevemente de qual autor/comentário e livro aquela ideia foi obtida.
 
 DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
@@ -565,29 +602,29 @@ ESPECIFICAÇÕES DE CADA PARTE DA ESTRUTURA:
 Parte 1 - Introdução:
 ${
   sections.introducao.mode === "ai"
-    ? `O usuário selecionou [Gerar com IA]. Crie a Introdução. Lembre-se de iniciar com:\n# ${title}\n<div align="right"><em>Autor: ${author}</em></div>\n\nCrie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo apenas um ou dois parágrafos.`
-    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.introducao.text}" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente).`
+    ? "O usuário selecionou Gerar com IA. Crie a Introdução. Lembre-se de iniciar com:\n" + title.toUpperCase() + "\n<div align=\"right\"><em>Autor: " + author + "</em></div>\n\nINTRODUÇÃO\n\nCrie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo exatamente 2 (dois) parágrafos."
+    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.introducao.text + "\" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente)."
 }
 
 Parte 2 - Desenvolvimento:
 ${
   sections.desenvolvimento.mode === "ai"
-    ? `O usuário selecionou [Gerar com IA]. Crie o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e pastorais detalhados, baseados rigorosamente na exegese contida nos comentários teológicos do contexto. Organize claramente cada um dos ${numPoints || 3} pontos de forma ordenada e numerada.`
-    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.desenvolvimento.text}" (Não altere este texto manual em hipótese alguma).`
+    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " + (numPoints || 3) + " pontos teológicos detalhados. Inicie a seção com:\nDESENVOLVIMENTO"
+    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.desenvolvimento.text + "\" (Não altere este texto manual em hipótese alguma)."
 }
 
 Parte 3 - Conclusão:
 ${
   sections.conclusao.mode === "ai"
-    ? "O usuário selecionou [Gerar com IA]. Crie uma Conclusão profunda e consolidada que amarre o sermão de volta ao tema e à passagem central."
-    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.conclusao.text}" (Não mexa no texto digitado).`
+    ? "O usuário selecionou Gerar com IA. Crie uma Conclusão profunda e consolidada em exatamente 2 (dois) parágrafos. Inicie a seção com:\nCONCLUSÃO"
+    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.conclusao.text + "\" (Não mexa no texto digitado)."
 }
 
 Parte 4 - Apelo:
 ${
   sections.apelo.mode === "ai"
-    ? "O usuário selecionou [Gerar com IA]. Crie um Apelo pastoral poderoso (uma chamada ética, transformação moral, de fé ou de ação comunitária) amparado no ensino textual exposto."
-    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.apelo.text}" (Mantenha-o intacto).`
+    ? "O usuário selecionou Gerar com IA. Crie um Apelo pastoral poderoso em exatamente 2 (dois) parágrafos. Inicie a seção com:\nAPELO"
+    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.apelo.text + "\" (Mantenha-o intacto)."
 }
 
 ----------------------------------------------------
@@ -596,29 +633,29 @@ ${rCtx || "Nenhum livro de comentários eclesiásticos foi encontrado na pasta b
 ----------------------------------------------------
 
 Por favor, escreva o sermão de modo estruturado e polido.
-Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seguir EXATAMENTE o formulário e os delimitadores abaixo no corpo de texto gerado:
+Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seguir EXATAMENTE o formulário e os delimitadores HTML abaixo no corpo de texto gerado, sem NENHUM caractere markdown como chaves, parênteses ou colchetes:
 
-[INTRODUCAO_START]
+<INTRODUCAO_START>
 (Texto da introdução)
-[INTRODUCAO_END]
+<INTRODUCAO_END>
 
-[DESENVOLVIMENTO_START]
+<DESENVOLVIMENTO_START>
 (Texto do desenvolvimento estruturado)
-[DESENVOLVIMENTO_END]
+<DESENVOLVIMENTO_END>
 
-[CONCLUSAO_START]
+<CONCLUSAO_START>
 (Texto da conclusão)
-[CONCLUSAO_END]
+<CONCLUSAO_END>
 
-[APELO_START]
+<APELO_START>
 (Texto do apelo pastoral)
-[APELO_END]
+<APELO_END>
 
-[REFERENCIAS_START]
-(Lista numerada de Referências correspondentes no formato:
-1. Comentário Exegético Maclaren - Vol II, pág. 112 [Romanos 8:1]
-2. Comentário Bíblico de Genebra, Pág. 345 [Efésios 2:8])
-[REFERENCIAS_END]
+<REFERENCIAS_START>
+(Lista de Referências correspondentes no formato:
+Comentário Exegético Maclaren - Vol II, pág. 112 Romanos 8:1
+Comentário Bíblico de Genebra, Pág. 345 Efésios 2:8)
+<REFERENCIAS_END>
 
 Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamente a verdade teológica dos textos sem inventar.
 `;
@@ -635,11 +672,11 @@ Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamen
     const parsedText = responseText;
 
     // 5. Slice responses back cleanly
-    const extractedIntroducao = extractSection(parsedText, "[INTRODUCAO_START]", "[INTRODUCAO_END]") || (sections.introducao.mode === 'manual' ? sections.introducao.text : "Erro ao gerar introdução.");
-    const extractedDesenvolvimento = extractSection(parsedText, "[DESENVOLVIMENTO_START]", "[DESENVOLVIMENTO_END]") || (sections.desenvolvimento.mode === 'manual' ? sections.desenvolvimento.text : "Erro ao gerar desenvolvimento.");
-    const extractedConclusao = extractSection(parsedText, "[CONCLUSAO_START]", "[CONCLUSAO_END]") || (sections.conclusao.mode === 'manual' ? sections.conclusao.text : "Erro ao gerar conclusão.");
-    const extractedApelo = extractSection(parsedText, "[APELO_START]", "[APELO_END]") || (sections.apelo.mode === 'manual' ? sections.apelo.text : "Erro ao gerar apelo.");
-    const extractedReferencias = extractSection(parsedText, "[REFERENCIAS_START]", "[REFERENCIAS_END]") || "1. Banco de Dados Teológico Geral do Sistema.";
+    const extractedIntroducao = extractSection(parsedText, "<INTRODUCAO_START>", "<INTRODUCAO_END>") || (sections.introducao.mode === 'manual' ? sections.introducao.text : "Erro ao gerar introdução.");
+    const extractedDesenvolvimento = extractSection(parsedText, "<DESENVOLVIMENTO_START>", "<DESENVOLVIMENTO_END>") || (sections.desenvolvimento.mode === 'manual' ? sections.desenvolvimento.text : "Erro ao gerar desenvolvimento.");
+    const extractedConclusao = extractSection(parsedText, "<CONCLUSAO_START>", "<CONCLUSAO_END>") || (sections.conclusao.mode === 'manual' ? sections.conclusao.text : "Erro ao gerar conclusão.");
+    const extractedApelo = extractSection(parsedText, "<APELO_START>", "<APELO_END>") || (sections.apelo.mode === 'manual' ? sections.apelo.text : "Erro ao gerar apelo.");
+    const extractedReferencias = extractSection(parsedText, "<REFERENCIAS_START>", "<REFERENCIAS_END>") || "Nenhuma referência encontrada.";
 
     // 6. Build the actual high-fidelity DOCX document locally
     const docBuffer = await createSermonDocx(
