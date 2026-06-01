@@ -47,6 +47,7 @@ export default function App() {
   const [generating, setGenerating] = useState(false);
   const [generatingFormat, setGeneratingFormat] = useState<"doc" | "pdf" | null>(null);
   const [generatorError, setGeneratorError] = useState("");
+  const [generationStage, setGenerationStage] = useState("");
   const [activeTab, setActiveTab] = useState<"introducao" | "desenvolvimento" | "conclusao" | "apelo" | "referencias">("introducao");
   const [sermonResult, setSermonResult] = useState<SermonResponse | null>(null);
 
@@ -152,66 +153,147 @@ export default function App() {
 
     setGenerating(true);
     setGeneratingFormat(format);
+    setGenerationStage("Iniciando exegese do sermão...");
 
     try {
-      const payload = {
-        passage,
-        author,
-        title,
-        numPoints: desenvolvimentoPoints,
-        userEmail: currentUser.email,
-        sections: {
-          introducao: {
-            mode: globalMode,
-            text: globalMode === "manual" ? introducaoText : ""
-          },
-          desenvolvimento: {
-            mode: globalMode,
-            text: globalMode === "manual" ? desenvolvimentoText : ""
-          },
-          conclusao: {
-            mode: globalMode,
-            text: globalMode === "manual" ? conclusaoText : ""
-          },
-          apelo: {
-            mode: globalMode,
-            text: globalMode === "manual" ? apeloText : ""
+      let generatedIntroducao = globalMode === "manual" ? introducaoText : "";
+      let generatedDesenvolvimento = globalMode === "manual" ? desenvolvimentoText : "";
+      let generatedConclusao = globalMode === "manual" ? conclusaoText : "";
+      let generatedApelo = globalMode === "manual" ? apeloText : "";
+      let generatedReferencias = "1. Banco de Dados Teológico Geral do Sistema.";
+
+      // We process sections sequentially using a for...of loop
+      const sectionsList = ["introducao", "desenvolvimento", "conclusao", "apelo", "referencias"] as const;
+
+      for (const section of sectionsList) {
+        if (section === "referencias") {
+          setGenerationStage("Compilando referências teológicas...");
+          const res = await fetch("/api/generate-section", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              section,
+              passage,
+              author,
+              title,
+              userEmail: currentUser.email,
+              generatedTexts: {
+                introducao: generatedIntroducao,
+                desenvolvimento: generatedDesenvolvimento,
+                conclusao: generatedConclusao,
+                apelo: generatedApelo
+              }
+            })
+          });
+
+          if (!res.ok) {
+            if (res.status === 503) {
+              throw new Error("O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.");
+            }
+            let errorMessage = "Erro de compilação teológica no Gemini.";
+            try {
+              const errData = await res.json();
+              errorMessage = errData.error || errorMessage;
+            } catch (e) {}
+            throw new Error(errorMessage);
+          }
+
+          const sectionData = await res.json();
+          generatedReferencias = sectionData.text;
+        } else {
+          const isAI = globalMode === "ai";
+          if (isAI) {
+            const sectionNamesMap: Record<string, string> = {
+              introducao: "Introdução",
+              desenvolvimento: "Desenvolvimento",
+              conclusao: "Conclusão",
+              apelo: "Apelo"
+            };
+            setGenerationStage(`Interpretando o texto da seção: ${sectionNamesMap[section]}...`);
+            
+            const res = await fetch("/api/generate-section", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                section,
+                passage,
+                author,
+                title,
+                numPoints: desenvolvimentoPoints,
+                userEmail: currentUser.email
+              })
+            });
+
+            if (!res.ok) {
+              if (res.status === 503) {
+                throw new Error(`O serviço de inteligência artificial está temporariamente indisponível (Erro 503) ao gerar a seção ${sectionNamesMap[section]}. Por favor, tente novamente em instantes.`);
+              }
+              let errorMessage = `Erro de compilação teológica ao gerar a seção ${sectionNamesMap[section]}.`;
+              try {
+                const errData = await res.json();
+                errorMessage = errData.error || errorMessage;
+              } catch (e) {}
+              throw new Error(errorMessage);
+            }
+
+            const sectionData = await res.json();
+            if (section === "introducao") generatedIntroducao = sectionData.text;
+            if (section === "desenvolvimento") generatedDesenvolvimento = sectionData.text;
+            if (section === "conclusao") generatedConclusao = sectionData.text;
+            if (section === "apelo") generatedApelo = sectionData.text;
           }
         }
-      };
+      }
 
-      const res = await fetch("/api/generate", {
+      setGenerationStage("Compondo e formatando documento ABNT...");
+
+      const bundleRes = await fetch("/api/bundle-docx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          passage,
+          author,
+          title,
+          introducao: generatedIntroducao,
+          desenvolvimento: generatedDesenvolvimento,
+          conclusao: generatedConclusao,
+          apelo: generatedApelo,
+          referencias: generatedReferencias,
+          userEmail: currentUser.email
+        })
       });
 
-      if (!res.ok) {
-        if (res.status === 503) {
-          throw new Error("O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.");
-        }
-        let errorMessage = "Erro de compilação teológica no Gemini.";
+      if (!bundleRes.ok) {
+        let errorMessage = "Erro ao estruturar e baixar o documento Word.";
         try {
-          const errData = await res.json();
+          const errData = await bundleRes.json();
           errorMessage = errData.error || errorMessage;
-        } catch (parseErr) {
-          // Response is not valid JSON
-        }
+        } catch (e) {}
         throw new Error(errorMessage);
       }
 
-      const data = await res.json();
+      const bundleData = await bundleRes.json();
 
-      setSermonResult(data);
-      // Automatically focus first tab
+      const combinedResult: SermonResponse = {
+        success: true,
+        introducao: generatedIntroducao,
+        desenvolvimento: generatedDesenvolvimento,
+        conclusao: generatedConclusao,
+        apelo: generatedApelo,
+        referencias: generatedReferencias,
+        docxBase64: bundleData.docxBase64
+      };
+
+      setSermonResult(combinedResult);
       setActiveTab("introducao");
 
-      // Action: Download file automatically after process completes
+      // Automatically trigger downloads
       if (format === "doc") {
-        triggerDocxDownload(data);
+        triggerDocxDownload(combinedResult);
       } else {
-        triggerPdfDownload(data);
+        triggerPdfDownload(combinedResult);
       }
+
     } catch (err: any) {
       setGeneratorError(err.message || "Erro de conexão ao processar RAG teológico.");
       setGenerating(false);
@@ -219,6 +301,7 @@ export default function App() {
     } finally {
       setGenerating(false);
       setGeneratingFormat(null);
+      setGenerationStage("");
     }
   };
 
@@ -296,16 +379,16 @@ export default function App() {
         y += 3; // space after paragraph
       };
 
-      // 1. Título do Sermão (ALL CAPS)
+      // 1. Título do Sermão (ALL CAPS, Bold)
       addParagraph(title.toUpperCase(), "bold", 14, "center");
       y += 2;
 
-      // 2. Passagem Bíblica
-      addParagraph(passage, "normal", 12, "center");
+      // 2. Nome do Autor / Orador (Right-aligned, Italic)
+      addParagraph(author, "italic", 11, "right");
       y += 2;
 
-      // 3. Nome do Autor (Right-aligned, italic)
-      addParagraph(author, "italic", 11, "right");
+      // 3. Passagem Bíblica (Right-aligned)
+      addParagraph(passage, "normal", 11, "right");
       y += 8;
 
       // Section printing helper
@@ -529,20 +612,7 @@ export default function App() {
             </h1>
           </div>
 
-          <div className="flex flex-col items-start lg:items-end gap-3" id="user_action_badge">
-            
-            {currentUser ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 font-sans text-[10px] uppercase tracking-wider font-semibold text-emerald-800 bg-emerald-100/60 border border-emerald-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                Gabinete Liberado: {currentUser.email.split("@")[0]}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 font-sans text-[10px] uppercase tracking-wider font-semibold text-amber-800 bg-amber-100/60 border border-amber-300 animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
-                Consulta Bloqueada (Login pendente)
-              </span>
-            )}
-          </div>
+
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1" id="dashboard_grid">
@@ -591,7 +661,7 @@ export default function App() {
                     placeholder="Ex: A Suficiência da Graça"
                     className="w-full bg-transparent border-b border-[#1A1A1A]/30 pb-2 font-serif text-lg font-bold text-[#1A1A1A] placeholder-[#1A1A1A]/40 focus:outline-[#D4AF37] transition-all"
                   />
-                  <p className="text-[10px] text-[#8B7E66] mt-1.5">O tema central ou ideia homilética norteadora.</p>
+                  <p className="text-[10px] text-[#8B7E66] mt-1.5">O tema central ou idea homilética norteadora.</p>
                 </div>
               </div>
             </section>
@@ -759,19 +829,7 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center gap-2 text-[10px] font-sans">
-                    <span className={`w-2 h-2 rounded-full ${currentUser ? "bg-emerald-600" : "bg-red-500"}`}></span>
-                    <span className="font-bold uppercase tracking-wider">
-                      {currentUser ? "Licença Pastoral Autorizada" : "Usuário Não Autenticado"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[9px] font-sans opacity-60">
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                    <span className="uppercase tracking-tighter">Gemini-3.5-Flash RAG Active</span>
-                  </div>
-                </div>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-end gap-4">
 
                 <div className="flex flex-wrap gap-3">
                   <button
@@ -835,6 +893,13 @@ export default function App() {
                   >
                     <Loader2 className="w-12 h-12 text-[#D4AF37] animate-spin mb-6" />
                     <h4 className="text-xl font-display tracking-tight mb-2 text-white">Interpretando as Escrituras</h4>
+                    
+                    {generationStage && (
+                      <div className="text-[10px] font-sans text-[#D4AF37] uppercase tracking-[0.12em] font-bold mb-4 px-3 py-1.5 bg-white/5 border border-white/10">
+                        {generationStage}
+                      </div>
+                    )}
+
                     <p className="text-white/60 text-xs max-w-sm leading-relaxed text-center font-serif mb-6">
                       Aguarde enquanto consultamos a nossa <span className="text-[#D4AF37] font-sans font-bold not-italic tracking-wider text-[10px]">base_teologica_local</span>. Estamos cruzando referências cruzadas e erguendo argumentos puritanos legítimos.
                     </p>
@@ -895,7 +960,6 @@ export default function App() {
                     <div className="border border-[#D1CEC5] bg-white shadow-sm overflow-hidden" id="tab_preview_container">
                       
                       <div className="bg-[#F9F8F5] p-3 border-b border-[#D1CEC5]">
-                        <span className="text-[9px] uppercase font-sans font-bold tracking-widest text-[#8B7E66] block mb-2">Exame Prévio Litúrgico</span>
                         <div className="flex flex-wrap gap-1" id="preview_tab_header">
                           {(["introducao", "desenvolvimento", "conclusao", "apelo", "referencias"] as const).map((tab) => (
                             <button
