@@ -2,10 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { createRequire } from "module";
-// @ts-ignore
-const customRequire = typeof require !== "undefined" ? require : createRequire(import.meta.url);
-const pdf = customRequire("pdf-parse");
+import { PDFParse } from "pdf-parse";
 import { GoogleGenAI } from "@google/genai";
 import { Document, Paragraph, TextRun, AlignmentType, Packer } from "docx";
 import { createServer as createViteServer } from "vite";
@@ -152,9 +149,10 @@ async function loadTheologicalContext(): Promise<string> {
     try {
       if (ext === ".pdf") {
         const dataBuffer = await fs.promises.readFile(filePath);
-        const parsed = await pdf(dataBuffer);
-        if (parsed && parsed.text) {
-          return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${parsed.text}\n`;
+        const parser = new PDFParse({ data: dataBuffer });
+        const result = await parser.getText();
+        if (result && result.text) {
+          return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${result.text}\n`;
         }
         return "";
       } else if (ext === ".txt" || ext === ".md") {
