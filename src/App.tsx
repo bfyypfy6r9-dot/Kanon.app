@@ -580,9 +580,7 @@ export default function App() {
                   </button>
                 </form>
 
-                <p className="text-[10px] text-white/50 mt-4 leading-relaxed font-sans bg-black/20 p-3 border border-white/5">
-                  <strong>Nota Teológica:</strong> Apenas pregadores autenticados podem submeter e-mails ao motor RAG para consulta de obras fixas.
-                </p>
+
               </div>
             )}
           </div>
