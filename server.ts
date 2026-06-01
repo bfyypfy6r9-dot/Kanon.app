@@ -267,6 +267,9 @@ app.post("/api/generate-section", async (req, res) => {
       return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
     }
 
+    // Delay de 2 segundos para evitar sobrecarga ou erro 503 na API do Gemini por requisições muito rápidas
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     const ai = new GoogleGenAI({
       apiKey: apiKey,
       httpOptions: {
