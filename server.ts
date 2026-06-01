@@ -13,10 +13,71 @@ import { createServer as createViteServer } from "vite";
 const app = express();
 const PORT = 3000;
 
-// Fila global para serializar todas as requisições ao Gemini e impor um delay de pelo menos 2 segundos entre as chamadas reais.
-// Como no Express as requisições paralelas rodam concorrentemente, o simples "await new Promise" de forma isolada
-// não impede que várias requisições acabem executando ao mesmo tempo. A fila abaixo garante a alternância sequencial.
-let geminiRequestQueue: Promise<any> = Promise.resolve();
+// Mutex para sequenciar todas as chamadas assíncronas concorrentes à API do Gemini
+class Mutex {
+  private queue: Promise<any> = Promise.resolve();
+
+  async acquire(): Promise<() => void> {
+    let release: () => void;
+    const ticket = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const previous = this.queue;
+    this.queue = previous.then(() => ticket).catch(() => ticket);
+
+    await previous;
+    return release!;
+  }
+}
+
+const geminiMutex = new Mutex();
+
+// Função que executa chamadas com retry automático e espaçamento garantido
+async function queryGeminiWithRetry(
+  ai: GoogleGenAI,
+  promptText: string,
+  systemInstruction?: string,
+  retries = 3,
+  delayMs = 2500
+): Promise<string> {
+  let attempt = 0;
+  while (attempt < retries) {
+    try {
+      if (attempt > 0) {
+        const backoff = delayMs * Math.pow(2, attempt - 1);
+        console.log(`[Gemini Retry] Tentativa ${attempt + 1}/${retries} de reconexão após delay de ${backoff}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+      } else {
+        // Delay mínimo garantido entre requisições sequenciais do mesmo fluxo
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      const config: any = {};
+      if (systemInstruction) {
+        config.systemInstruction = systemInstruction;
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: promptText,
+        config: config,
+      });
+
+      return response.text || "";
+    } catch (err: any) {
+      attempt++;
+      console.error(`[Gemini Error] Erro na tentativa ${attempt}/${retries}:`, err);
+      const isTransient = err.status === 503 || err.status === 429 || err.message?.includes("503") || err.message?.includes("429") || !err.status;
+      if (isTransient && attempt < retries) {
+        continue;
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error("O serviço do Google Gemini está temporariamente indisponível após múltiplas tentativas. Por favor, tente novamente.");
+}
 
 app.use(express.json());
 
@@ -141,7 +202,7 @@ function createSermonParagraphs(text: string, isDevelopment: boolean = false): P
     let isPoint = false;
     let processedText = line;
 
-    // Check if line is inside Development and represents a main point (starts with Ponto or a number list item but not a/b/c sub-bullet)
+    // Check if line is inside Development and represents a main point
     if (
       isDevelopment && 
       (/^(ponto|point)/i.test(line) || /^\d+[\.\-\s]+ponto/i.test(line) || (/^\d+\.?\s+[A-Z]/i.test(line) && !/^[a-zA-Z]\s*[\)\.]/i.test(line)))
@@ -367,28 +428,13 @@ Não invente livros se não estiverem presentes nos textos fornecidos ou no cont
 `;
     }
 
-    // Executamos a chamada ao Gemini de maneira serializada através da fila global,
-    // garantindo que cada requisição espere 2 segundos antes de iniciar e não ocorram chamadas simultâneas.
-    const responseText = await new Promise<string>((resolveQueue, rejectQueue) => {
-      geminiRequestQueue = geminiRequestQueue
-        .then(async () => {
-          // Espaçamento de 2 segundos garantido desde o fim do processamento anterior
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3.5-flash",
-            contents: promptText,
-            config: {
-              systemInstruction: systemInstruction,
-            }
-          });
-
-          resolveQueue(response.text || "");
-        })
-        .catch((err) => {
-          rejectQueue(err);
-        });
-    });
+    const release = await geminiMutex.acquire();
+    let responseText = "";
+    try {
+      responseText = await queryGeminiWithRetry(ai, promptText, systemInstruction);
+    } finally {
+      release();
+    }
 
     res.json({ success: true, text: responseText });
 
@@ -434,7 +480,6 @@ app.post("/api/generate", async (req, res) => {
   try {
     const { passage, author, title, sections, numPoints, userEmail } = req.body;
 
-    // Validate absolute requirement that users must be logged in
     if (!userEmail) {
       return res.status(401).json({ error: "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão." });
     }
@@ -447,10 +492,8 @@ app.post("/api/generate", async (req, res) => {
       return res.status(400).json({ error: "Configuração de estrutura de sermão inválida." });
     }
 
-    // 1. Gather files context
     const rCtx = await loadTheologicalContext();
 
-    // 2. Instantiate Gemini
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
@@ -465,7 +508,6 @@ app.post("/api/generate", async (req, res) => {
       },
     });
 
-    // 3. Formulate prompt incorporating RAG context and structure requirements
     const promptText = `
 Você é um assistente teológico de altíssimo nível acadêmico e pastoral.
 Seu objetivo é gerar o conteúdo de um sermão bíblico sob medida, utilizando exclusivamente as bases de comentários teológicos fornecidas abaixo.
@@ -492,7 +534,7 @@ Parte 1 - Introdução:
 ${
   sections.introducao.mode === "ai"
     ? "O usuário selecionou [Gerar com IA]. Crie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. Insira as notas de rodapé [^x] sequenciais de forma impecável."
-    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.introducao.text}" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente). Se apropriado e se o texto tocar em ideias do contexto, você pode apenas inserir notas de rodapé no final das frases.`
+    : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.introducao.text}" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente). Se apropriado e se o texto tocar inalterado de ideias do contexto, você pode apenas inserir notas de rodapé no final das frases.`
 }
 
 Parte 2 - Desenvolvimento:
@@ -549,24 +591,13 @@ Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seg
 Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamente a verdade teológica dos textos sem inventar.
 `;
 
-    // 4. Query model serializado na mesma fila global para proteger a API do Gemini
-    const responseText = await new Promise<string>((resolveQueue, rejectQueue) => {
-      geminiRequestQueue = geminiRequestQueue
-        .then(async () => {
-          // Espaçamento de 2 segundos garantido desde o fim do processamento anterior
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3.5-flash",
-            contents: promptText,
-          });
-
-          resolveQueue(response.text || "");
-        })
-        .catch((err) => {
-          rejectQueue(err);
-        });
-    });
+    const release = await geminiMutex.acquire();
+    let responseText = "";
+    try {
+      responseText = await queryGeminiWithRetry(ai, promptText);
+    } finally {
+      release();
+    }
 
     const parsedText = responseText;
 
@@ -591,7 +622,6 @@ Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamen
 
     const docxBase64 = docBuffer.toString("base64");
 
-    // Return the segmented details and Word base64 file to the user
     res.json({
       success: true,
       introducao: extractedIntroducao,
@@ -633,7 +663,6 @@ function createSermonDocx(
           },
         },
         children: [
-          // CABEÇALHO DO TÍTULO EM MAIÚSCULO E NEGRITO
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 200, after: 240 },
@@ -647,7 +676,6 @@ function createSermonDocx(
             ],
           }),
 
-          // NOME DO AUTOR ALINHADO À DIREITA E EM ITÁLICO
           new Paragraph({
             alignment: AlignmentType.RIGHT,
             spacing: { after: 120 },
@@ -661,7 +689,6 @@ function createSermonDocx(
             ],
           }),
 
-          // PASSAGEM BÍBLICA ALINHADA À DIREITA
           new Paragraph({
             alignment: AlignmentType.RIGHT,
             spacing: { after: 480 },
@@ -674,7 +701,6 @@ function createSermonDocx(
             ],
           }),
 
-          // SEÇÃO 1: INTRODUÇÃO
           new Paragraph({
             alignment: AlignmentType.LEFT,
             spacing: { before: 400, after: 180 },
@@ -689,7 +715,6 @@ function createSermonDocx(
           }),
           ...createSermonParagraphs(introducao),
 
-          // SEÇÃO 2: DESENVOLVIMENTO
           new Paragraph({
             alignment: AlignmentType.LEFT,
             spacing: { before: 400, after: 180 },
@@ -704,7 +729,6 @@ function createSermonDocx(
           }),
           ...createSermonParagraphs(desenvolvimento, true),
 
-          // SEÇÃO 3: CONCLUSÃO
           new Paragraph({
             alignment: AlignmentType.LEFT,
             spacing: { before: 400, after: 180 },
@@ -719,7 +743,6 @@ function createSermonDocx(
           }),
           ...createSermonParagraphs(conclusao),
 
-          // SEÇÃO 4: APELO
           new Paragraph({
             alignment: AlignmentType.LEFT,
             spacing: { before: 400, after: 180 },
@@ -734,7 +757,6 @@ function createSermonDocx(
           }),
           ...createSermonParagraphs(apelo),
 
-          // SEÇÃO REFERÊNCIAS
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 600, after: 240 },
