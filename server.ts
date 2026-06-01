@@ -2,8 +2,10 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { createRequire } from "module";
 // @ts-ignore
-import pdf from "pdf-parse";
+const customRequire = typeof require !== "undefined" ? require : createRequire(import.meta.url);
+const pdf = customRequire("pdf-parse");
 import { GoogleGenAI } from "@google/genai";
 import { Document, Paragraph, TextRun, AlignmentType, Packer } from "docx";
 import { createServer as createViteServer } from "vite";
@@ -70,7 +72,7 @@ async function loadTheologicalContext(): Promise<string> {
 }
 
 // Parse text for footnotes markers e.g. [^1], [^2], converting them into TextRuns with superscripts for docx
-function parseParagraphToRuns(text: string): TextRun[] {
+function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun[] {
   const runs: TextRun[] = [];
   // Regex to extract footnotes [^1], [^2]
   const regex = /\[\^(\d+)\]/g;
@@ -88,6 +90,7 @@ function parseParagraphToRuns(text: string): TextRun[] {
           text: plainText,
           font: "Arial",
           size: 24, // 12pt (docx uses half-points)
+          bold: forceBold || undefined,
         })
       );
     }
@@ -115,6 +118,7 @@ function parseParagraphToRuns(text: string): TextRun[] {
         text: remainingText,
         font: "Arial",
         size: 24, // 12pt
+        bold: forceBold || undefined,
       })
     );
   }
@@ -123,12 +127,25 @@ function parseParagraphToRuns(text: string): TextRun[] {
 }
 
 // Convert string elements into fully padded, indent-compliant docx formats
-function createSermonParagraphs(text: string): Paragraph[] {
+function createSermonParagraphs(text: string, isDevelopment: boolean = false): Paragraph[] {
   if (!text) return [];
   // Split by newline and filter empty items
   const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
   return lines.map(line => {
+    let isPoint = false;
+    let processedText = line;
+
+    // Check if line is inside Development and represents a main point (starts with Ponto or a number list item but not a/b/c sub-bullet)
+    if (
+      isDevelopment && 
+      (/^(ponto|point)/i.test(line) || /^\d+[\.\-\s]+ponto/i.test(line) || (/^\d+\.?\s+[A-Z]/i.test(line) && !/^[a-zA-Z]\s*[\)\.]/i.test(line)))
+    ) {
+      isPoint = true;
+      // Convert the line so only the First letter is uppercase, and everything else is lowercase
+      processedText = line.charAt(0).toUpperCase() + line.slice(1).toLowerCase();
+    }
+
     return new Paragraph({
       alignment: AlignmentType.JUSTIFIED,
       spacing: {
@@ -136,9 +153,9 @@ function createSermonParagraphs(text: string): Paragraph[] {
         after: 140,   // standard padding
       },
       indent: {
-        firstLine: 708, // 1.25 cm first-line indentation (approx 708 dxa)
+        firstLine: isPoint ? 0 : 708, // 1.25 cm first-line indentation
       },
-      children: parseParagraphToRuns(line),
+      children: parseParagraphToRuns(processedText, isPoint),
     });
   });
 }
@@ -161,7 +178,7 @@ function createReferenceParagraphs(text: string): Paragraph[] {
         new TextRun({
           text: line,
           font: "Arial",
-          size: 20, // 10pt size (20 half-points)
+          size: 24, // 12pt size (24 half-points)
         }),
       ],
     });
@@ -230,6 +247,166 @@ app.post("/api/auth/login", (req, res) => {
   }
 
   res.json({ success: true, user: { email } });
+});
+
+app.post("/api/generate-section", async (req, res) => {
+  try {
+    const { section, passage, author, title, numPoints, userEmail, generatedTexts } = req.body;
+
+    if (!userEmail) {
+      return res.status(401).json({ error: "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão." });
+    }
+
+    if (!passage || !author || !title) {
+      return res.status(400).json({ error: "Campos obrigatórios (Passagem, Autor e Título) ausentes." });
+    }
+
+    const rCtx = await loadTheologicalContext();
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+
+    let systemInstruction = `Você é um assistente teológico de altíssimo nível acadêmico e pastoral. Seu objetivo é apoiar um pregador a estruturar o sermão expositivo sobre a passagem "${passage}" (Tema: "${title}"). Use exclusivamente os textos de base teológica para a sua argumentação.`;
+
+    let promptText = "";
+
+    if (section === "introducao") {
+      promptText = `
+DADOS METADADOS DO SERMÃO DO CLIENTE:
+- Passagem Bíblica Base: "${passage}"
+- Autor do Sermão: "${author}"
+- Título Temático: "${title}"
+
+Gere uma Introdução profunda e impactante para este sermão bíblico expositivo com base nos comentários teológicos abaixo.
+CRITÉRIO CRÍTICO:
+1. Use estritamente o contexto fornecido abaixo.
+2. Insira marcações de notas de rodapé sequenciais exatamente no formato [^1], [^2], [^3] sempre que expor ou parafrasear uma ideia teológica dos comentários fornecidos.
+3. Não use títulos adicionais. Escreva um texto fluente e corrido.
+
+CONTEXTO TEOLÓGICO SEGURO (RAG):
+${rCtx || "Comentários teológicos clássicos."}
+`;
+    } else if (section === "desenvolvimento") {
+      promptText = `
+DADOS METADADOS DO SERMÃO DO CLIENTE:
+- Passagem Bíblica Base: "${passage}"
+- Autor do Sermão: "${author}"
+- Título Temático: "${title}"
+
+Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e aplicação pastoral detalhados com base nos comentários teológicos abaixo.
+REGRA ESTRITA: Cada um dos pontos principais escolhidos DEVE obrigatoriamente conter exatamente 3 subtópicos explicativos (ordenados, por exemplo, por sub-pontos, itens ou letras a, b, c).
+Organize claramente cada um dos ${numPoints || 3} pontos de forma numerada.
+Insira notas de rodapé sequenciais no formato [^x] apropriado com base no contexto abaixo.
+
+CONTEXTO TEOLÓGICO SEGURO (RAG):
+${rCtx || "Comentários teológicos clássicos."}
+`;
+    } else if (section === "conclusao") {
+      promptText = `
+DADOS METADADOS DO SERMÃO DO CLIENTE:
+- Passagem Bíblica Base: "${passage}"
+- Autor do Sermão: "${author}"
+- Título Temático: "${title}"
+
+Gere uma Conclusão profunda e consolidada que amarre o sermão de volta ao tema central e passagem base. 
+Insira notas de rodapé sequenciais no formato [^x] adequado.
+
+CONTEXTO TEOLÓGICO SEGURO (RAG):
+${rCtx || "Comentários teológicos clássicos."}
+`;
+    } else if (section === "apelo") {
+      promptText = `
+DADOS METADADOS DO SERMÃO DO CLIENTE:
+- Passagem Bíblica Base: "${passage}"
+- Autor do Sermão: "${author}"
+- Título Temático: "${title}"
+
+Gere um Apelo pastoral poderoso (uma chamada de fé, transformação moral, de ética ou de ação comunitária). 
+Insira notas de rodapé sequenciais no formato [^x] se aplicável.
+
+CONTEXTO TEOLÓGICO SEGURO (RAG):
+${rCtx || "Comentários teológicos clássicos."}
+`;
+    } else if (section === "referencias") {
+      promptText = `
+Gere a lista numerada de referências correspondentes às notas de rodapé citadas no sermão abaixo.
+Baseie-se puramente nos seguintes textos gerados e determine quais autores e comentários literários fornecidos foram citados.
+
+TEXTO DO SERMÃO GERADO ATÉ O MOMENTO:
+--- INTRODUÇÃO ---
+${generatedTexts?.introducao || ""}
+
+--- DESENVOLVIMENTO ---
+${generatedTexts?.desenvolvimento || ""}
+
+--- CONCLUSÃO ---
+${generatedTexts?.conclusao || ""}
+
+--- APELO ---
+${generatedTexts?.apelo || ""}
+
+Lista numerada de Referências correspondentes no formato profissional (ABNT), por exemplo:
+1. Comentário Exegético Maclaren - Vol II, pág. 112 [Romanos 8:1]
+2. Comentário Bíblico de Genebra, Pág. 345 [Efésios 2:8]
+Não invente livros se não estiverem presentes nos textos fornecidos ou no contexto.
+`;
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: promptText,
+      config: {
+        systemInstruction: systemInstruction,
+      }
+    });
+
+    res.json({ success: true, text: response.text || "" });
+
+  } catch (error: any) {
+    console.error("Erro ao gerar seção:", error);
+    if (error.status === 503 || error.message?.includes("503")) {
+      res.status(503).json({ error: "O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes." });
+    } else {
+      res.status(500).json({ error: error.message || "Ocorreu um erro ao gerar esta seção." });
+    }
+  }
+});
+
+app.post("/api/bundle-docx", async (req, res) => {
+  try {
+    const { passage, author, title, introducao, desenvolvimento, conclusao, apelo, referencias, userEmail } = req.body;
+
+    if (!userEmail) {
+      return res.status(401).json({ error: "Não autorizado." });
+    }
+
+    const docBuffer = await createSermonDocx(
+      passage,
+      author,
+      title,
+      introducao,
+      desenvolvimento,
+      conclusao,
+      apelo,
+      referencias
+    );
+
+    const docxBase64 = docBuffer.toString("base64");
+    res.json({ success: true, docxBase64 });
+  } catch (error: any) {
+    console.error("Erro ao empacotar DOCX:", error);
+    res.status(500).json({ error: error.message || "Erro de formatação do documento DOCX." });
+  }
 });
 
 // 2. Sermon Generation and RAG Engine Endpoint
@@ -301,7 +478,7 @@ ${
 Parte 2 - Desenvolvimento:
 ${
   sections.desenvolvimento.mode === "ai"
-    ? `O usuário selecionou [Gerar com IA]. Crie o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e pastorais detalhados, baseados rigorosamente na exegese contida nos comentários teológicos do contexto. Organize claramente cada um dos ${numPoints || 3} pontos de forma ordenada e numerada. Insira notas de rodapé [^x] apropriadas.`
+    ? `O usuário selecionou [Gerar com IA]. Crie o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos de ensinamento e pastorais detalhados, baseados rigorosamente na exegese contida nos comentários teológicos do contexto. Organize claramente cada um dos ${numPoints || 3} pontos de forma ordenada e numerada. REGRA ESTRITA: Cada um dos pontos principais escolhidos DEVE obrigatoriamente conter exatamente 3 subtópicos explicativos (por exemplo, nomeados como sub-pontos, itens ou letras a, b, c). Insira notas de rodapé [^x] apropriadas.`
     : `O usuário selecionou [Digitar Manualmente]. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "${sections.desenvolvimento.text}" (Não altere este texto manual em hipótese alguma).`
 }
 
@@ -426,27 +603,40 @@ function createSermonDocx(
           // CABEÇALHO DO TÍTULO EM MAIÚSCULO E NEGRITO
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 200, after: 360 },
+            spacing: { before: 200, after: 240 },
             children: [
               new TextRun({
                 text: title.toUpperCase(),
                 font: "Arial",
-                size: 28, // 14pt size
+                size: 24, // 12pt size
                 bold: true,
               }),
             ],
           }),
 
-          // SUB-METADADOS
+          // NOME DO AUTOR ALINHADO À DIREITA E EM ITÁLICO
           new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { after: 600 },
+            alignment: AlignmentType.RIGHT,
+            spacing: { after: 120 },
             children: [
               new TextRun({
-                text: `Sermão Expositivo • Passagem Bíblica: ${passage} • Autor: ${author}`,
+                text: author,
+                font: "Arial",
+                size: 24, // 12pt size
+                italics: true,
+              }),
+            ],
+          }),
+
+          // PASSAGEM BÍBLICA ALINHADA À DIREITA
+          new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            spacing: { after: 480 },
+            children: [
+              new TextRun({
+                text: passage,
                 font: "Arial",
                 size: 24, // 12pt
-                italics: true,
               }),
             ],
           }),
@@ -472,14 +662,14 @@ function createSermonDocx(
             spacing: { before: 400, after: 180 },
             children: [
               new TextRun({
-                text: "2. DESENVOLVIMENTO DO SERMÃO",
+                text: "2. DESENVOLVIMENTO",
                 font: "Arial",
                 size: 24,
                 bold: true,
               }),
             ],
           }),
-          ...createSermonParagraphs(desenvolvimento),
+          ...createSermonParagraphs(desenvolvimento, true),
 
           // SEÇÃO 3: CONCLUSÃO
           new Paragraph({
@@ -502,7 +692,7 @@ function createSermonDocx(
             spacing: { before: 400, after: 180 },
             children: [
               new TextRun({
-                text: "4. APELO PASTORAL",
+                text: "4. APELO",
                 font: "Arial",
                 size: 24,
                 bold: true,
@@ -536,23 +726,27 @@ function createSermonDocx(
 // ==================== ASSET HANDLING & MIDDLEWARES ====================
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+  try {
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server HTTP rodando com sucesso na porta ${PORT}`);
-  });
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server HTTP rodando com sucesso na porta ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Critical error during server startup:", err);
+  }
 }
 
 startServer();
