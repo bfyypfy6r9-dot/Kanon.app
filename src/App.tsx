@@ -186,10 +186,21 @@ export default function App() {
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Erro de compilação teológica no Gemini.");
+        if (res.status === 503) {
+          throw new Error("O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.");
+        }
+        let errorMessage = "Erro de compilação teológica no Gemini.";
+        try {
+          const errData = await res.json();
+          errorMessage = errData.error || errorMessage;
+        } catch (parseErr) {
+          // Response is not valid JSON
+        }
+        throw new Error(errorMessage);
       }
+
+      const data = await res.json();
 
       setSermonResult(data);
       // Automatically focus first tab
@@ -203,6 +214,8 @@ export default function App() {
       }
     } catch (err: any) {
       setGeneratorError(err.message || "Erro de conexão ao processar RAG teológico.");
+      setGenerating(false);
+      setGeneratingFormat(null);
     } finally {
       setGenerating(false);
       setGeneratingFormat(null);
