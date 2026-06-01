@@ -105,11 +105,11 @@ app.use(express.json());
 
 // File paths
 const USERS_FILE = path.join(process.cwd(), "users.json");
-const BASE_TEOLOGICA_DIR = path.join(process.cwd(), "base_teologica");
+const pastaBase = path.join(process.cwd(), "base_teologica");
 
 // Ensure base_teologica directory exists
-if (!fs.existsSync(BASE_TEOLOGICA_DIR)) {
-  fs.mkdirSync(BASE_TEOLOGICA_DIR, { recursive: true });
+if (!fs.existsSync(pastaBase)) {
+  fs.mkdirSync(pastaBase, { recursive: true });
 }
 
 // User Accounts helpers
@@ -138,7 +138,24 @@ function chunkText(text: string, source: string): { chunk: string; source: strin
   const chunks: { chunk: string; source: string }[] = [];
   let currentChunk = "";
   
-  for (const para of paragraphs) {
+  for (let para of paragraphs) {
+    if (!para.trim()) continue;
+    
+    // If a single paragraph is extremely long, break it into smaller pieces
+    while (para.length > 2000) {
+       let piece = para.substring(0, 2000);
+       para = para.substring(2000);
+       
+       if (currentChunk.length + piece.length > 2000) {
+         if (currentChunk.trim()) {
+           chunks.push({ chunk: currentChunk.trim(), source });
+         }
+         currentChunk = piece + "\n\n";
+       } else {
+         currentChunk += piece + "\n\n";
+       }
+    }
+
     if (currentChunk.length + para.length > 2000) {
       if (currentChunk.trim()) {
         chunks.push({ chunk: currentChunk.trim(), source });
@@ -156,27 +173,23 @@ function chunkText(text: string, source: string): { chunk: string; source: strin
 
 // Theology context loader for RAG
 async function loadTheologicalContext(passage: string, theme: string): Promise<string> {
-  if (!fs.existsSync(BASE_TEOLOGICA_DIR)) {
+  if (!fs.existsSync(pastaBase)) {
     return "";
   }
   
-  const files = fs.readdirSync(BASE_TEOLOGICA_DIR).filter(file => file.toLowerCase().endsWith(".txt"));
+  const files = fs.readdirSync(pastaBase).filter(file => file.toLowerCase().endsWith(".txt"));
+  const allChunks: { chunk: string; source: string }[] = [];
   
-  const extractPromises = files.map(async (file) => {
-    const filePath = path.join(BASE_TEOLOGICA_DIR, file);
-
+  for (const file of files) {
+    const filePath = path.join(pastaBase, file);
     try {
-      const content = await fs.promises.readFile(filePath, "utf-8");
-      return chunkText(content, file);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const fileChunks = chunkText(content, file);
+      allChunks.push(...fileChunks);
     } catch (err: any) {
       console.error(`Erro ao processar base de dados no arquivo: ${file}. Detalhes: ${err.message}`, err);
-      // Pula para o próximo sem travar
-      return [];
     }
-  });
-
-  const arraysOfChunks = await Promise.all(extractPromises);
-  const allChunks = arraysOfChunks.flat();
+  }
 
   // 2. Mecanismo de Busca (Scoring)
   const searchTerms = [passage, theme].join(" ")
