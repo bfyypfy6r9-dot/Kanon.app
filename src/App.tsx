@@ -354,7 +354,7 @@ export default function App() {
 
       // Paragraph printer wrapping text, handling page breaks and indenting first line
       const addParagraph = (text: string, style: "normal" | "bold" | "italic" | "bolditalic" = "normal", size = 12, align: "left" | "right" | "center" = "left", isIndent = false) => {
-        doc.setFont("Helvetica", style);
+        doc.setFont("times", style);
         doc.setFontSize(size);
         
         const lines = doc.splitTextToSize(text, contentWidth);
