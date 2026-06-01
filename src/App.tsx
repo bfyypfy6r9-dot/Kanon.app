@@ -238,13 +238,9 @@ export default function App() {
         
         {/* Cabecalho Lateral */}
         <div className="mb-10 pb-6 border-b border-white/10" id="sidebar_header">
-          <h2 className="text-[10px] uppercase tracking-[0.25em] text-[#D4AF37]/80 font-bold font-sans mb-2">
-            Gabinete & Exegese
-          </h2>
           <h1 className="text-3xl font-display font-bold tracking-tight text-white leading-none">
             Kanon.app
           </h1>
-          <span className="text-[11px] font-sans opacity-40 mt-1 block">RAG Teológico & ABNT Word</span>
         </div>
 
         {/* Informações de Autenticação */}
@@ -395,18 +391,13 @@ export default function App() {
         {/* CABEÇALHO COM ESTILO EDITORIAL E BORDAS FORTES */}
         <header className="mb-10 border-b border-[#D1CEC5] pb-8 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6" id="main_header">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.2em] font-sans font-bold text-[#8B7E66] mb-2">
-              Gabinete Litúrgico Integrado
-            </div>
             <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight font-serif text-[#1A1A1A] leading-tight">
               Kanon.app
             </h1>
-            <p className="text-[#1A1A1A]/70 text-sm mt-2 max-w-3xl leading-relaxed">
-              Formule sermões expositivos e homiléticos integrados à base local de comentários dos puritanos e de Spurgeon. Exporte para Word (.docx) sob a normatização exata exigida pela ABNT.
-            </p>
           </div>
 
           <div className="flex flex-col items-start lg:items-end gap-3" id="user_action_badge">
+            
             {currentUser ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 font-sans text-[10px] uppercase tracking-wider font-semibold text-emerald-800 bg-emerald-100/60 border border-emerald-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
@@ -864,7 +855,7 @@ export default function App() {
 
                         {activeTab === "apelo" && (
                           <div className="space-y-4" id="prev_apelo">
-                            <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">4. APELO</h4>
+                            <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">4. APELO PASTORAL</h4>
                             <p className="text-sm text-[#1A1A1A] leading-8 text-justify indent-[1.25cm] whitespace-pre-line font-serif">
                               {sermonResult.apelo}
                             </p>
