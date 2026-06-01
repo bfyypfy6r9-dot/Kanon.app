@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { PDFParse } from "pdf-parse";
 import { GoogleGenAI } from "@google/genai";
 import { Document, Paragraph, TextRun, AlignmentType, Packer } from "docx";
 import { createServer as createViteServer } from "vite";
@@ -161,31 +160,19 @@ async function loadTheologicalContext(passage: string, theme: string): Promise<s
     return "";
   }
   
-  const files = fs.readdirSync(BASE_TEOLOGICA_DIR);
+  const files = fs.readdirSync(BASE_TEOLOGICA_DIR).filter(file => file.toLowerCase().endsWith(".txt"));
   
   const extractPromises = files.map(async (file) => {
     const filePath = path.join(BASE_TEOLOGICA_DIR, file);
-    const ext = path.extname(file).toLowerCase();
 
     try {
-      if (ext === ".pdf") {
-        const dataBuffer = await fs.promises.readFile(filePath);
-        const parser = new PDFParse({ data: dataBuffer });
-        const result = await parser.getText();
-        if (result && result.text) {
-          return chunkText(result.text, file);
-        }
-        return [];
-      } else if (ext === ".txt" || ext === ".md") {
-        const content = await fs.promises.readFile(filePath, "utf-8");
-        return chunkText(content, file);
-      }
+      const content = await fs.promises.readFile(filePath, "utf-8");
+      return chunkText(content, file);
     } catch (err: any) {
       console.error(`Erro ao processar base de dados no arquivo: ${file}. Detalhes: ${err.message}`, err);
       // Pula para o próximo sem travar
       return [];
     }
-    return [];
   });
 
   const arraysOfChunks = await Promise.all(extractPromises);
@@ -618,10 +605,10 @@ app.post("/api/generate", async (req, res) => {
     const rCtx = await loadTheologicalContext(passage, title);
 
     if (!rCtx || rCtx.trim() === "") {
-      console.log("Nenhum texto encontrado nos PDFs. rCtx is empty.");
-      return res.status(400).json({ error: "Nenhum texto encontrado nos PDFs. Se os seus PDFs forem livros escaneados (apenas imagens e sem camada de texto digital), a IA não conseguirá ler. Certifique-se de usar PDFs copiáveis ou converta-os para texto (.txt)." });
+      console.log("Nenhum texto encontrado nos arquivos. rCtx is empty.");
+      return res.status(400).json({ error: "Nenhum texto extraído dos arquivos na pasta base_teologica. Certifique-se de usar arquivos .txt." });
     } else {
-      console.log("Texto extraído dos PDFs (preview): ", rCtx.substring(0, 100) + "...");
+      console.log("Texto extraído dos arquivos (preview): ", rCtx.substring(0, 100) + "...");
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
