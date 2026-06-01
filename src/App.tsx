@@ -30,7 +30,7 @@ export default function App() {
 
   // Form metadata states
   const [passage, setPassage] = useState("Romanos 8:1-4");
-  const [author, setAuthor] = useState("Pr. João Santos");
+  const [author, setAuthor] = useState("Arthur de Souza");
   const [title, setTitle] = useState("A Liberdade Triunfante no Espírito de Deus");
 
   // Global AI vs Manual Control
@@ -661,7 +661,7 @@ export default function App() {
                     placeholder="Ex: A Suficiência da Graça"
                     className="w-full bg-transparent border-b border-[#1A1A1A]/30 pb-2 font-serif text-lg font-bold text-[#1A1A1A] placeholder-[#1A1A1A]/40 focus:outline-[#D4AF37] transition-all"
                   />
-                  <p className="text-[10px] text-[#8B7E66] mt-1.5">O tema central ou idea homilética norteadora.</p>
+                  <p className="text-[10px] text-[#8B7E66] mt-1.5">O tema central ou ideia homilética norteadora.</p>
                 </div>
               </div>
             </section>
