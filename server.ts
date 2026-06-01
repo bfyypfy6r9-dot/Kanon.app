@@ -153,13 +153,16 @@ async function loadTheologicalContext(): Promise<string> {
       if (ext === ".pdf") {
         const dataBuffer = await fs.promises.readFile(filePath);
         const parsed = await pdf(dataBuffer);
-        return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${parsed.text}\n`;
+        if (parsed && parsed.text) {
+          return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${parsed.text}\n`;
+        }
+        return "";
       } else if (ext === ".txt" || ext === ".md") {
         const content = await fs.promises.readFile(filePath, "utf-8");
         return `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${file} ---\n${content}\n`;
       }
-    } catch (err) {
-      console.error(`Erro ao processar base de dados no arquivo: ${file}`, err);
+    } catch (err: any) {
+      console.error(`Erro ao processar base de dados no arquivo: ${file}. Detalhes: ${err.message}`, err);
       // Pula para o próximo sem travar
       return "";
     }
@@ -167,7 +170,7 @@ async function loadTheologicalContext(): Promise<string> {
   });
 
   const results = await Promise.all(extractPromises);
-  const context = results.join("").trim();
+  const context = results.filter((t) => t.trim() !== "").join("").trim();
   
   return context;
 }
