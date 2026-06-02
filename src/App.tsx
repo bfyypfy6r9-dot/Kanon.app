@@ -75,26 +75,29 @@ export default function App() {
     }
 
     setAuthLoading(true);
-    const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: authEmail, password: authPassword })
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Ocorreu um erro na autenticação.");
-      }
+      await new Promise(r => setTimeout(r, 400)); // Simulando delay de rede
+      const usersDB = JSON.parse(localStorage.getItem("sermon_builder_users") || "[]");
 
       if (authMode === "register") {
+        const exists = usersDB.find((u: any) => u.email.toLowerCase() === authEmail.toLowerCase());
+        if (exists) {
+          throw new Error("Esta conta de e-mail já está registrada.");
+        }
+        usersDB.push({ email: authEmail, password: authPassword, createdAt: new Date().toISOString() });
+        localStorage.setItem("sermon_builder_users", JSON.stringify(usersDB));
+        
         setAuthSuccess("Conta criada com sucesso! Faça login para utilizá-la.");
         setAuthMode("login");
         setAuthPassword("");
       } else {
-        const session: UserSession = { email: data.user.email };
+        const user = usersDB.find((u: any) => u.email.toLowerCase() === authEmail.toLowerCase() && u.password === authPassword);
+        if (!user) {
+          throw new Error("Usuário não encontrado ou senha incorreta.");
+        }
+
+        const session: UserSession = { email: user.email };
         localStorage.setItem("sermon_builder_session_v1", JSON.stringify(session));
         setCurrentUser(session);
         setAuthEmail("");
@@ -102,7 +105,7 @@ export default function App() {
         setAuthSuccess("Login efetuado com sucesso!");
       }
     } catch (err: any) {
-      setAuthError(err.message || "Erro de conexão com o servidor.");
+      setAuthError(err.message || "Erro interno.");
     } finally {
       setAuthLoading(false);
     }
