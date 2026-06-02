@@ -104,33 +104,11 @@ async function queryGeminiWithRetry(
 app.use(express.json());
 
 // File paths
-const USERS_FILE = path.join(process.cwd(), "users.json");
 const pastaBase = path.join(process.cwd(), "base_teologica");
 
 // Ensure base_teologica directory exists
 if (!fs.existsSync(pastaBase)) {
   fs.mkdirSync(pastaBase, { recursive: true });
-}
-
-// User Accounts helpers
-function readUsers() {
-  if (!fs.existsSync(USERS_FILE)) {
-    return [];
-  }
-  try {
-    const raw = fs.readFileSync(USERS_FILE, "utf-8");
-    return JSON.parse(raw);
-  } catch (err) {
-    return [];
-  }
-}
-
-function writeUsers(users: any[]) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-}
-
-function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
 }
 
 function chunkText(text: string, source: string): { chunk: string; source: string }[] {
@@ -375,46 +353,6 @@ function extractSection(text: string, startTag: string, endTag: string): string 
 }
 
 // ==================== API ENDPOINTS ====================
-
-// 1. Authentication Endpoints
-app.post("/api/auth/register", (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: "E-mail e senha são obrigatórios." });
-  }
-
-  const users = readUsers();
-  const exists = users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-  if (exists) {
-    return res.status(400).json({ success: false, error: "Esta conta de e-mail já está registrada." });
-  }
-
-  const newUser = {
-    email,
-    passwordHash: hashPassword(password),
-    registeredAt: new Date().toISOString()
-  };
-
-  users.push(newUser);
-  writeUsers(users);
-
-  res.json({ success: true, user: { email } });
-});
-
-app.post("/api/auth/login", (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: "E-mail e senha são obrigatórios." });
-  }
-
-  const users = readUsers();
-  const user = users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-  if (!user || user.passwordHash !== hashPassword(password)) {
-    return res.status(401).json({ success: false, error: "Credenciais inválidas. E-mail ou senha incorretos." });
-  }
-
-  res.json({ success: true, user: { email } });
-});
 
 app.post("/api/generate-section", async (req, res) => {
   try {
