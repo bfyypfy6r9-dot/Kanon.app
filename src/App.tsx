@@ -422,11 +422,6 @@ export default function App() {
 
         <div className="flex-1 flex flex-col justify-between" id="auth_block">
           <div>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#D4AF37] font-bold mb-4 flex items-center gap-2 font-sans">
-              <User className="w-3.5 h-3.5" />
-              SISTEMA DE ACESSO
-            </h3>
-
             {currentUser ? (
               <div className="bg-white/5 border border-white/10 p-4 mb-6" id="active_user_panel">
                 <div className="flex items-center gap-3 mb-4">
@@ -473,7 +468,6 @@ export default function App() {
               <div className="bg-white/5 p-5 border border-white/10" id="login_form_container">
                 <div className="mb-4 text-center">
                   <h3 className="text-sm font-sans font-bold uppercase tracking-wider text-white">Login</h3>
-                  <p className="text-[10px] text-white/50 mt-1">Acesso restrito ao Painel Editorial</p>
                 </div>
 
                 <form onSubmit={handleAuthSubmit} className="space-y-4" id="credentials_form">
