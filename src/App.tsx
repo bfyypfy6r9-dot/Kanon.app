@@ -12,11 +12,28 @@ import {
   Loader2, 
   FileCheck,
   Award,
-  BookMarked
+  BookMarked,
+  ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SermonResponse, UserSession } from "./types";
 import { jsPDF } from "jspdf";
+
+const RenderSermonText = ({ text }: { text: string }) => {
+  if (!text) return null;
+  const parts = text.split(/(\[\^\d+\])/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/\[\^(\d+)\]/);
+        if (match) {
+          return <sup key={i} className="text-[10px] text-[#D4AF37] font-bold ml-0.5">{match[1]}</sup>;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+};
 
 export default function App() {
   // Authentication state
@@ -29,9 +46,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
 
   // Form metadata states
-  const [passage, setPassage] = useState("Romanos 8:1-4");
+  const [passage, setPassage] = useState("Êxodo 20:8-11");
   const [author, setAuthor] = useState("Arthur de Souza");
-  const [title, setTitle] = useState("A Liberdade Triunfante no Espírito de Deus");
+  const [title, setTitle] = useState("O Sábado");
+  const [targetAudience, setTargetAudience] = useState("");
+  const [userDrafts, setUserDrafts] = useState("");
 
   // Global AI vs Manual Control
   const [globalMode, setGlobalMode] = useState<"ai" | "manual">("ai");
@@ -163,6 +182,8 @@ export default function App() {
         passage,
         author,
         title,
+        targetAudience,
+        userDrafts,
         numPoints: desenvolvimentoPoints,
         userEmail: currentUser.email,
         sections: {
@@ -521,7 +542,18 @@ export default function App() {
             </h1>
           </div>
 
-
+          <div className="flex gap-4">
+            <a 
+              href="https://bestcommentaries.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-white border border-[#D1CEC5] hover:border-[#1A1A1A] text-[#1A1A1A] text-xs font-bold uppercase tracking-widest px-4 py-2 transition-colors group"
+            >
+              <BookOpen className="w-4 h-4 text-[#8B7E66] group-hover:text-[#1A1A1A]" />
+              Descobrir Melhor Comentário
+              <ExternalLink className="w-3.5 h-3.5 ml-1 opacity-50 view-transition-opacity group-hover:opacity-100" />
+            </a>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1" id="dashboard_grid">
@@ -571,6 +603,39 @@ export default function App() {
                     className="w-full bg-transparent border-b border-[#1A1A1A]/30 pb-2 font-serif text-lg font-bold text-[#1A1A1A] placeholder-[#1A1A1A]/40 focus:outline-[#D4AF37] transition-all"
                   />
                   <p className="text-[10px] text-[#8B7E66] mt-1.5">O tema central ou ideia homilética norteadora.</p>
+                </div>
+              </div>
+            </section>
+
+            {/* CARD 1.5: CONTEXTO E PERSONALIZAÇÃO */}
+            <section className="bg-white border border-[#D1CEC5] p-6 shadow-xs" id="card_personalization">
+              <h3 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#1A1A1A]/70 mb-6 flex items-center gap-2 pb-2 border-b border-[#D1CEC5]">
+                <FileText className="w-4 h-4 text-[#8B7E66]" />
+                Personalização do Sermão
+              </h3>
+
+              <div className="grid grid-cols-1 gap-6" id="personalization_inputs_grid">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest mb-1.5 font-sans font-bold text-[#1A1A1A]">Público-alvo / Linguagem</label>
+                  <input
+                    type="text"
+                    value={targetAudience}
+                    onChange={(e) => setTargetAudience(e.target.value)}
+                    placeholder="Ex: Jovens universitários, linguagem informal..."
+                    className="w-full bg-transparent border-b border-[#1A1A1A]/30 pb-2 text-sm text-[#1A1A1A] placeholder-[#1A1A1A]/40 focus:outline-[#D4AF37] transition-all font-serif"
+                  />
+                  <p className="text-[10px] text-[#8B7E66] mt-1.5">Especifique para quem você vai pregar e o tom desejado.</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-widest mb-1.5 font-sans font-bold text-[#1A1A1A]">Meus Rascunhos / Ideias</label>
+                  <textarea
+                    value={userDrafts}
+                    onChange={(e) => setUserDrafts(e.target.value)}
+                    placeholder="Cole aqui suas anotações, pensamentos ou direcionamentos para a IA..."
+                    className="w-full bg-transparent border border-[#1A1A1A]/30 p-3 text-sm text-[#1A1A1A] placeholder-[#1A1A1A]/40 focus:border-[#D4AF37] focus:outline-none transition-all font-serif min-h-[80px] resize-y"
+                  />
+                  <p className="text-[10px] text-[#8B7E66] mt-1.5">Essencial para a IA incorporar seus pensamentos originais ao sermão gerado.</p>
                 </div>
               </div>
             </section>
@@ -899,8 +964,8 @@ export default function App() {
                         {activeTab === "introducao" && (
                           <div className="space-y-4" id="prev_intro">
                             <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">1. INTRODUÇÃO</h4>
-                            <p className="text-sm text-[#1A1A1A] leading-8 text-justify indent-[1.25cm] whitespace-pre-line font-serif">
-                              {sermonResult.introducao}
+                            <p className="text-sm text-[#1A1A1A] leading-[1.5] text-justify indent-[1.25cm] whitespace-pre-line font-serif">
+                              <RenderSermonText text={sermonResult.introducao} />
                             </p>
                           </div>
                         )}
@@ -908,8 +973,8 @@ export default function App() {
                         {activeTab === "desenvolvimento" && (
                           <div className="space-y-4" id="prev_dev">
                             <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">2. DESENVOLVIMENTO</h4>
-                            <div className="text-sm text-[#1A1A1A] leading-8 text-justify indent-[1.25cm] whitespace-pre-line font-serif">
-                              {sermonResult.desenvolvimento}
+                            <div className="text-sm text-[#1A1A1A] leading-[1.5] text-justify indent-[1.25cm] whitespace-pre-line font-serif">
+                              <RenderSermonText text={sermonResult.desenvolvimento} />
                             </div>
                           </div>
                         )}
@@ -917,8 +982,8 @@ export default function App() {
                         {activeTab === "conclusao" && (
                           <div className="space-y-4" id="prev_conclusion">
                             <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">3. CONCLUSÃO</h4>
-                            <p className="text-sm text-[#1A1A1A] leading-8 text-justify indent-[1.25cm] whitespace-pre-line font-serif">
-                              {sermonResult.conclusao}
+                            <p className="text-sm text-[#1A1A1A] leading-[1.5] text-justify indent-[1.25cm] whitespace-pre-line font-serif">
+                              <RenderSermonText text={sermonResult.conclusao} />
                             </p>
                           </div>
                         )}
@@ -926,8 +991,8 @@ export default function App() {
                         {activeTab === "apelo" && (
                           <div className="space-y-4" id="prev_apelo">
                             <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-[#8B7E66]">4. APELO</h4>
-                            <p className="text-sm text-[#1A1A1A] leading-8 text-justify indent-[1.25cm] whitespace-pre-line font-serif">
-                              {sermonResult.apelo}
+                            <p className="text-sm text-[#1A1A1A] leading-[1.5] text-justify indent-[1.25cm] whitespace-pre-line font-serif">
+                              <RenderSermonText text={sermonResult.apelo} />
                             </p>
                           </div>
                         )}
@@ -936,7 +1001,7 @@ export default function App() {
                           <div className="space-y-4" id="prev_references">
                             <h4 className="text-xs font-sans font-bold tracking-widest uppercase text-center text-[#8B7E66]">Referências do Comentário Exegético</h4>
                             <div className="text-[11px] text-[#1A1A1A]/80 bg-[#F9F8F5] p-4 border border-[#D1CEC5] leading-relaxed text-justify whitespace-pre-line font-mono">
-                              {sermonResult.referencias}
+                              <RenderSermonText text={sermonResult.referencias} />
                             </div>
                           </div>
                         )}
