@@ -5,6 +5,11 @@ import crypto from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { Document, Paragraph, TextRun, AlignmentType, Packer } from "docx";
 import { createServer as createViteServer } from "vite";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const app = express();
 const PORT = 3000;
@@ -33,7 +38,7 @@ async function queryGeminiWithRetry(
   promptText: string,
   systemInstruction?: string,
   retries = 4,
-  delayMs = 2500
+  delayMs = 2500,
 ): Promise<string> {
   let attempt = 0;
   let modelToUse = "gemini-3.5-flash";
@@ -43,7 +48,9 @@ async function queryGeminiWithRetry(
     try {
       if (attempt > 0) {
         const backoff = delayMs * Math.pow(2, attempt - 1);
-        console.log(`[Gemini Retry] Tentativa ${attempt + 1}/${retries} usando o modelo "${modelToUse}" após delay de ${backoff}ms...`);
+        console.log(
+          `[Gemini Retry] Tentativa ${attempt + 1}/${retries} usando o modelo "${modelToUse}" após delay de ${backoff}ms...`,
+        );
         await new Promise((resolve) => setTimeout(resolve, backoff));
       } else {
         // Delay mínimo garantido entre requisições sequenciais do mesmo fluxo
@@ -57,7 +64,9 @@ async function queryGeminiWithRetry(
         config.systemInstruction = systemInstruction;
       }
 
-      console.log(`[Gemini Request] Chamando modelo: "${modelToUse}", tentativa ${attempt + 1}`);
+      console.log(
+        `[Gemini Request] Chamando modelo: "${modelToUse}", tentativa ${attempt + 1}`,
+      );
       const response = await ai.models.generateContent({
         model: modelToUse,
         contents: promptText,
@@ -67,26 +76,36 @@ async function queryGeminiWithRetry(
       return response.text || "";
     } catch (err: any) {
       attempt++;
-      console.error(`[Gemini Error] Erro na tentativa ${attempt}/${retries} com o modelo "${modelToUse}":`, err);
+      console.error(
+        `[Gemini Error] Erro na tentativa ${attempt}/${retries} com o modelo "${modelToUse}":`,
+        err,
+      );
 
       const errorMessage = err.message || "";
       const errorStatus = err.status || 0;
 
       // Verifica se é erro 503, 429 ou indicativo de sobrecarga (high demand / unavailable)
-      const isTransient = 
-        errorStatus === 503 || 
-        errorStatus === 429 || 
-        errorMessage.includes("503") || 
-        errorMessage.includes("429") || 
-        errorMessage.includes("demand") || 
-        errorMessage.includes("UNAVAILABLE") || 
+      const isTransient =
+        errorStatus === 503 ||
+        errorStatus === 429 ||
+        errorMessage.includes("503") ||
+        errorMessage.includes("429") ||
+        errorMessage.includes("demand") ||
+        errorMessage.includes("UNAVAILABLE") ||
         !errorStatus;
 
       if (isTransient && attempt < retries) {
         // Se ainda não fizemos fallback e o erro é de sobrecarga/indisponibilidade (503),
         // fazemos o fallback automático para o modelo gemini-3.1-flash-lite para contornar o tráfego.
-        if (!hasFallenBack && (errorStatus === 503 || errorMessage.includes("demand") || errorMessage.includes("UNAVAILABLE"))) {
-          console.warn(`[Gemini Fallback] ATENÇÃO: "${modelToUse}" está congestionado. Chaveando de forma resiliente para "gemini-3.1-flash-lite" para garantir que o sermão seja gerado.`);
+        if (
+          !hasFallenBack &&
+          (errorStatus === 503 ||
+            errorMessage.includes("demand") ||
+            errorMessage.includes("UNAVAILABLE"))
+        ) {
+          console.warn(
+            `[Gemini Fallback] ATENÇÃO: "${modelToUse}" está congestionado. Chaveando de forma resiliente para "gemini-3.1-flash-lite" para garantir que o sermão seja gerado.`,
+          );
           modelToUse = "gemini-3.1-flash-lite";
           hasFallenBack = true;
           // Aguarda um pequeno instante extra e prossegue imediatamente
@@ -98,7 +117,9 @@ async function queryGeminiWithRetry(
       }
     }
   }
-  throw new Error("O serviço do Google Gemini está temporariamente indisponível após múltiplas tentativas. Por favor, tente novamente.");
+  throw new Error(
+    "O serviço do Google Gemini está temporariamente indisponível após múltiplas tentativas. Por favor, tente novamente.",
+  );
 }
 
 app.use(express.json());
@@ -111,27 +132,30 @@ if (!fs.existsSync(pastaBase)) {
   fs.mkdirSync(pastaBase, { recursive: true });
 }
 
-function chunkText(text: string, source: string): { chunk: string; source: string }[] {
+function chunkText(
+  text: string,
+  source: string,
+): { chunk: string; source: string }[] {
   const paragraphs = text.split(/\n\s*\n/);
   const chunks: { chunk: string; source: string }[] = [];
   let currentChunk = "";
-  
+
   for (let para of paragraphs) {
     if (!para.trim()) continue;
-    
+
     // If a single paragraph is extremely long, break it into smaller pieces
     while (para.length > 2000) {
-       let piece = para.substring(0, 2000);
-       para = para.substring(2000);
-       
-       if (currentChunk.length + piece.length > 2000) {
-         if (currentChunk.trim()) {
-           chunks.push({ chunk: currentChunk.trim(), source });
-         }
-         currentChunk = piece + "\n\n";
-       } else {
-         currentChunk += piece + "\n\n";
-       }
+      let piece = para.substring(0, 2000);
+      para = para.substring(2000);
+
+      if (currentChunk.length + piece.length > 2000) {
+        if (currentChunk.trim()) {
+          chunks.push({ chunk: currentChunk.trim(), source });
+        }
+        currentChunk = piece + "\n\n";
+      } else {
+        currentChunk += piece + "\n\n";
+      }
     }
 
     if (currentChunk.length + para.length > 2000) {
@@ -150,14 +174,19 @@ function chunkText(text: string, source: string): { chunk: string; source: strin
 }
 
 // Theology context loader for RAG
-async function loadTheologicalContext(passage: string, theme: string): Promise<string> {
+async function loadTheologicalContext(
+  passage: string,
+  theme: string,
+): Promise<string> {
   if (!fs.existsSync(pastaBase)) {
     return "";
   }
-  
-  const files = fs.readdirSync(pastaBase).filter(file => file.toLowerCase().endsWith(".txt"));
+
+  const files = fs
+    .readdirSync(pastaBase)
+    .filter((file) => file.toLowerCase().endsWith(".txt"));
   const allChunks: { chunk: string; source: string }[] = [];
-  
+
   for (const file of files) {
     const filePath = path.join(pastaBase, file);
     try {
@@ -165,29 +194,45 @@ async function loadTheologicalContext(passage: string, theme: string): Promise<s
       const fileChunks = chunkText(content, file);
       allChunks.push(...fileChunks);
     } catch (err: any) {
-      console.error(`Erro ao processar base de dados no arquivo: ${file}. Detalhes: ${err.message}`, err);
+      console.error(
+        `Erro ao processar base de dados no arquivo: ${file}. Detalhes: ${err.message}`,
+        err,
+      );
     }
   }
 
   // 2. Mecanismo de Busca (Scoring)
-  const searchTerms = [passage, theme].join(" ")
+  const searchTerms = [passage, theme]
+    .join(" ")
     .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove accents
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accents
     .split(/\W+/)
-    .filter(w => w.length > 3);
-  
-  const scoredChunks = allChunks.map(c => {
-    const textLower = c.chunk.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    .filter((w) => w.length > 3);
+
+  const scoredChunks = allChunks.map((c) => {
+    const textLower = c.chunk
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
     let score = 0;
     for (const term of searchTerms) {
-      const regex = new RegExp(`\\b${term}`, 'g');
+      const regex = new RegExp(`\\b${term}`, "g");
       const matches = textLower.match(regex);
       if (matches) {
         score += matches.length;
       }
     }
     // Boost on exact passage phrase match
-    if (passage && textLower.includes(passage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) {
+    if (
+      passage &&
+      textLower.includes(
+        passage
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, ""),
+      )
+    ) {
       score += 10;
     }
     return { ...c, score };
@@ -199,7 +244,7 @@ async function loadTheologicalContext(passage: string, theme: string): Promise<s
   // 3. Limite de Segurança (Top-K) ~ 50,000 characters
   let accumulatedLength = 0;
   const selectedChunks = [];
-  
+
   for (const item of scoredChunks) {
     const formattedChunk = `\n--- CONTEÚDO DO LIVRO/COMENTÁRIO: ${item.source} ---\n${item.chunk}\n`;
     if (accumulatedLength + formattedChunk.length > 50000) {
@@ -210,14 +255,19 @@ async function loadTheologicalContext(passage: string, theme: string): Promise<s
   }
 
   const context = selectedChunks.join("").trim();
-  
-  console.log(`RAG Local final: Retornando ${selectedChunks.length} chunks de ${allChunks.length} totais. Tamanho final: ${context.length} caracteres.`);
-  
+
+  console.log(
+    `RAG Local final: Retornando ${selectedChunks.length} chunks de ${allChunks.length} totais. Tamanho final: ${context.length} caracteres.`,
+  );
+
   return context;
 }
 
 // Parse text for footnotes markers e.g. [^1], [^2], converting them into TextRuns with superscripts for docx
-function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun[] {
+function parseParagraphToRuns(
+  text: string,
+  forceBold: boolean = false,
+): TextRun[] {
   const runs: TextRun[] = [];
   // Regex to extract unicode footnotes
   const regex = /([¹²³⁴⁵⁶⁷⁸⁹⁰]+)/g;
@@ -226,7 +276,7 @@ function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun
 
   while ((match = regex.exec(text)) !== null) {
     const matchIndex = match.index;
-    
+
     // Append preceding plain text
     const plainText = text.substring(lastIndex, matchIndex);
     if (plainText) {
@@ -236,13 +286,27 @@ function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun
           font: "Arial",
           size: 24, // 12pt (docx uses half-points)
           bold: forceBold || undefined,
-        })
+        }),
       );
     }
 
     // Append superscript foot index
-    const map: Record<string, string> = {'¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁰':'0'};
-    const cleanFnIndex = match[1].replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]/g, (m: string) => map[m] || m);
+    const map: Record<string, string> = {
+      "¹": "1",
+      "²": "2",
+      "³": "3",
+      "⁴": "4",
+      "⁵": "5",
+      "⁶": "6",
+      "⁷": "7",
+      "⁸": "8",
+      "⁹": "9",
+      "⁰": "0",
+    };
+    const cleanFnIndex = match[1].replace(
+      /[¹²³⁴⁵⁶⁷⁸⁹⁰]/g,
+      (m: string) => map[m] || m,
+    );
 
     runs.push(
       new TextRun({
@@ -251,7 +315,7 @@ function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun
         font: "Arial",
         size: 16, // smaller superscript size
         bold: true,
-      })
+      }),
     );
 
     lastIndex = regex.lastIndex;
@@ -266,7 +330,7 @@ function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun
         font: "Arial",
         size: 24, // 12pt
         bold: forceBold || undefined,
-      })
+      }),
     );
   }
 
@@ -274,30 +338,39 @@ function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun
 }
 
 // Convert string elements into fully padded, indent-compliant docx formats
-function createSermonParagraphs(text: string, isDevelopment: boolean = false): Paragraph[] {
+function createSermonParagraphs(
+  text: string,
+  isDevelopment: boolean = false,
+): Paragraph[] {
   if (!text) return [];
   // Split by newline and filter empty items
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 
-  return lines.map(line => {
+  return lines.map((line) => {
     let isPoint = false;
     let processedText = line;
 
     // Check if line is inside Development and represents a main point (starts with Ponto or a number list item but not a/b/c sub-bullet)
     if (
-      isDevelopment && 
-      (/^(ponto|point)/i.test(line) || /^\d+[\.\-\s]+ponto/i.test(line) || (/^\d+\.?\s+[A-Z]/i.test(line) && !/^[a-zA-Z]\s*[\)\.]/i.test(line)))
+      isDevelopment &&
+      (/^(ponto|point)/i.test(line) ||
+        /^\d+[\.\-\s]+ponto/i.test(line) ||
+        (/^\d+\.?\s+[A-Z]/i.test(line) && !/^[a-zA-Z]\s*[\)\.]/i.test(line)))
     ) {
       isPoint = true;
       // Convert the line so only the First letter is uppercase, and everything else is lowercase
-      processedText = line.charAt(0).toUpperCase() + line.slice(1).toLowerCase();
+      processedText =
+        line.charAt(0).toUpperCase() + line.slice(1).toLowerCase();
     }
 
     return new Paragraph({
       alignment: AlignmentType.BOTH,
       spacing: {
-        line: 360,    // 1.5 line spacing
-        after: 140,   // standard padding
+        line: 360, // 1.5 line spacing
+        after: 140, // standard padding
       },
       indent: {
         firstLine: isPoint ? 0 : 708, // 1.25 cm first-line indentation
@@ -309,13 +382,16 @@ function createSermonParagraphs(text: string, isDevelopment: boolean = false): P
 
 function createReferenceParagraphs(text: string): Paragraph[] {
   if (!text) return [];
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 
-  return lines.map(line => {
+  return lines.map((line) => {
     return new Paragraph({
       alignment: AlignmentType.BOTH,
       spacing: {
-        line: 240,   // Simple spacing for ABNT references
+        line: 240, // Simple spacing for ABNT references
         after: 80,
       },
       indent: {
@@ -333,7 +409,11 @@ function createReferenceParagraphs(text: string): Paragraph[] {
 }
 
 // Helper to reliably slice generated block markers from Gemini
-function extractSection(text: string, startTag: string, endTag: string): string {
+function extractSection(
+  text: string,
+  startTag: string,
+  endTag: string,
+): string {
   const startIndex = text.indexOf(startTag);
   const endIndex = text.indexOf(endTag);
 
@@ -358,20 +438,55 @@ function extractSection(text: string, startTag: string, endTag: string): string 
 
 app.post("/api/generate-section", async (req, res) => {
   try {
-    const { section, passage, author, title, targetAudience, userDrafts, numPoints, userEmail, generatedTexts } = req.body;
+    const {
+      section,
+      passage,
+      author,
+      title,
+      targetAudience,
+      userDrafts,
+      numPoints,
+      userEmail,
+      generatedTexts,
+    } = req.body;
 
-    if (!userEmail) {
-      return res.status(401).json({ error: "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão." });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res
+        .status(401)
+        .json({
+          error:
+            "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão.",
+        });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res
+        .status(401)
+        .json({ error: "Sessão inválida ou não autorizada." });
     }
 
     if (!passage || !author || !title) {
-      return res.status(400).json({ error: "Campos obrigatórios (Passagem, Autor e Título) ausentes." });
+      return res
+        .status(400)
+        .json({
+          error: "Campos obrigatórios (Passagem, Autor e Título) ausentes.",
+        });
     }
 
     const rCtx = await loadTheologicalContext(passage, title);
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
+      return res
+        .status(500)
+        .json({
+          error: "A chave GEMINI_API_KEY não foi configurada nos segredos.",
+        });
     }
 
     const ai = new GoogleGenAI({
@@ -483,29 +598,68 @@ ${rCtx || "Comentários teológicos clássicos."}
     const release = await geminiMutex.acquire();
     let responseText = "";
     try {
-      responseText = await queryGeminiWithRetry(ai, promptText, systemInstruction);
+      responseText = await queryGeminiWithRetry(
+        ai,
+        promptText,
+        systemInstruction,
+      );
     } finally {
       release();
     }
 
     res.json({ success: true, text: responseText });
-
   } catch (error: any) {
     console.error("Erro ao gerar seção:", error);
     if (error.status === 503 || error.message?.includes("503")) {
-      res.status(503).json({ error: "O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes." });
+      res
+        .status(503)
+        .json({
+          error:
+            "O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.",
+        });
     } else {
-      res.status(500).json({ error: error.message || "Ocorreu um erro ao gerar esta seção." });
+      res
+        .status(500)
+        .json({
+          error: error.message || "Ocorreu um erro ao gerar esta seção.",
+        });
     }
   }
 });
 
 app.post("/api/bundle-docx", async (req, res) => {
   try {
-    const { passage, author, title, introducao, desenvolvimento, conclusao, apelo, referencias, userEmail } = req.body;
+    const {
+      passage,
+      author,
+      title,
+      introducao,
+      desenvolvimento,
+      conclusao,
+      apelo,
+      referencias,
+      userEmail,
+    } = req.body;
 
-    if (!userEmail) {
-      return res.status(401).json({ error: "Não autorizado." });
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res
+        .status(401)
+        .json({
+          error:
+            "Você precisa criar uma conta ou fazer login na barra lateral para gerar o documento.",
+        });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res
+        .status(401)
+        .json({ error: "Sessão inválida ou não autorizada." });
     }
 
     const docBuffer = await createSermonDocx(
@@ -516,33 +670,69 @@ app.post("/api/bundle-docx", async (req, res) => {
       desenvolvimento,
       conclusao,
       apelo,
-      referencias
+      referencias,
     );
 
     const docxBase64 = docBuffer.toString("base64");
     res.json({ success: true, docxBase64 });
   } catch (error: any) {
     console.error("Erro ao empacotar DOCX:", error);
-    res.status(500).json({ error: error.message || "Erro de formatação do documento DOCX." });
+    res
+      .status(500)
+      .json({
+        error: error.message || "Erro de formatação do documento DOCX.",
+      });
   }
 });
 
-  // 2. Sermon Generation and RAG Engine Endpoint
+// 2. Sermon Generation and RAG Engine Endpoint
 app.post("/api/generate", async (req, res) => {
   try {
-    const { passage, author, title, targetAudience, userDrafts, sections, numPoints, userEmail } = req.body;
+    const {
+      passage,
+      author,
+      title,
+      targetAudience,
+      userDrafts,
+      sections,
+      numPoints,
+      userEmail,
+    } = req.body;
 
-    // Validate absolute requirement that users must be logged in
-    if (!userEmail) {
-      return res.status(401).json({ error: "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão." });
+    // Validate absolute requirement that users must be logged in using Supabase JWT
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res
+        .status(401)
+        .json({
+          error:
+            "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão.",
+        });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res
+        .status(401)
+        .json({ error: "Sessão inválida ou não autorizada." });
     }
 
     if (!passage || !author || !title) {
-      return res.status(400).json({ error: "Campos obrigatórios (Passagem, Autor e Título) ausentes." });
+      return res
+        .status(400)
+        .json({
+          error: "Campos obrigatórios (Passagem, Autor e Título) ausentes.",
+        });
     }
 
     if (!sections) {
-      return res.status(400).json({ error: "Configuração de estrutura de sermão inválida." });
+      return res
+        .status(400)
+        .json({ error: "Configuração de estrutura de sermão inválida." });
     }
 
     // 1. Gather files context
@@ -550,14 +740,26 @@ app.post("/api/generate", async (req, res) => {
 
     if (!rCtx || rCtx.trim() === "") {
       console.log("Nenhum texto encontrado nos arquivos. rCtx is empty.");
-      return res.status(400).json({ error: "Nenhum texto extraído dos arquivos na pasta base_teologica. Certifique-se de usar arquivos .txt." });
+      return res
+        .status(400)
+        .json({
+          error:
+            "Nenhum texto extraído dos arquivos na pasta base_teologica. Certifique-se de usar arquivos .txt.",
+        });
     } else {
-      console.log("Texto extraído dos arquivos (preview): ", rCtx.substring(0, 100) + "...");
+      console.log(
+        "Texto extraído dos arquivos (preview): ",
+        rCtx.substring(0, 100) + "...",
+      );
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "A chave GEMINI_API_KEY não foi configurada nos segredos." });
+      return res
+        .status(500)
+        .json({
+          error: "A chave GEMINI_API_KEY não foi configurada nos segredos.",
+        });
     }
 
     const ai = new GoogleGenAI({
@@ -584,8 +786,8 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
-- Público-alvo / Linguagem: "${targetAudience || 'Geral'}"
-- Meus Rascunhos / Ideias: "${userDrafts || 'Nenhum rascunho fornecido'}"
+- Público-alvo / Linguagem: "${targetAudience || "Geral"}"
+- Meus Rascunhos / Ideias: "${userDrafts || "Nenhum rascunho fornecido"}"
 
 CONVENÇÃO DE SEÇÕES DE CONTEÚDO:
 As quatro partes fundamentais do sermão são: Introdução, Desenvolvimento, Conclusão, Apelo.
@@ -597,28 +799,38 @@ Parte 1 - Introdução:
 ${
   sections.introducao.mode === "ai"
     ? "O usuário selecionou Gerar com IA. Crie a Introdução. Crie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo exatamente 2 (dois) parágrafos. NÃO escreva título ou autor nela."
-    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.introducao.text + "\" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente)."
+    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
+      sections.introducao.text +
+      '" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente).'
 }
 
 Parte 2 - Desenvolvimento:
 ${
   sections.desenvolvimento.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " + (numPoints || 3) + " pontos teológicos detalhados. Processe as referências e os documentos da base teológica (RAG) para redigir o desenvolvimento de forma robusta e baseada no contexto histórico. NÃO escreva a palavra 'Desenvolvimento', comece direto do primeiro ponto numerado."
-    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.desenvolvimento.text + "\" (Não altere este texto manual em hipótese alguma)."
+    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " +
+      (numPoints || 3) +
+      " pontos teológicos detalhados. Processe as referências e os documentos da base teológica (RAG) para redigir o desenvolvimento de forma robusta e baseada no contexto histórico. NÃO escreva a palavra 'Desenvolvimento', comece direto do primeiro ponto numerado."
+    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
+      sections.desenvolvimento.text +
+      '" (Não altere este texto manual em hipótese alguma).'
 }
 
 Parte 3 - Conclusão:
 ${
   sections.conclusao.mode === "ai"
     ? "O usuário selecionou Gerar com IA. Crie uma Conclusão profunda e consolidada em exatamente 2 (dois) parágrafos. NÃO escreva a palavra 'Conclusão', comece o texto direto."
-    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.conclusao.text + "\" (Não mexa no texto digitado)."
+    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
+      sections.conclusao.text +
+      '" (Não mexa no texto digitado).'
 }
 
 Parte 4 - Apelo:
 ${
   sections.apelo.mode === "ai"
     ? "O usuário selecionou Gerar com IA. Crie um Apelo pastoral poderoso em exatamente 2 (dois) parágrafos. NÃO escreva o encabeçamento 'Apelo', comece com os tópicos direto."
-    : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.apelo.text + "\" (Mantenha-o intacto)."
+    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
+      sections.apelo.text +
+      '" (Mantenha-o intacto).'
 }
 
 ----------------------------------------------------
@@ -667,11 +879,33 @@ Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamen
     const parsedText = responseText;
 
     // 5. Slice responses back cleanly
-    const extractedIntroducao = extractSection(parsedText, "<INTRODUCAO_START>", "<INTRODUCAO_END>") || (sections.introducao.mode === 'manual' ? sections.introducao.text : "Erro ao gerar introdução.");
-    const extractedDesenvolvimento = extractSection(parsedText, "<DESENVOLVIMENTO_START>", "<DESENVOLVIMENTO_END>") || (sections.desenvolvimento.mode === 'manual' ? sections.desenvolvimento.text : "Erro ao gerar desenvolvimento.");
-    const extractedConclusao = extractSection(parsedText, "<CONCLUSAO_START>", "<CONCLUSAO_END>") || (sections.conclusao.mode === 'manual' ? sections.conclusao.text : "Erro ao gerar conclusão.");
-    const extractedApelo = extractSection(parsedText, "<APELO_START>", "<APELO_END>") || (sections.apelo.mode === 'manual' ? sections.apelo.text : "Erro ao gerar apelo.");
-    const extractedReferencias = extractSection(parsedText, "<REFERENCIAS_START>", "<REFERENCIAS_END>") || "Nenhuma referência encontrada.";
+    const extractedIntroducao =
+      extractSection(parsedText, "<INTRODUCAO_START>", "<INTRODUCAO_END>") ||
+      (sections.introducao.mode === "manual"
+        ? sections.introducao.text
+        : "Erro ao gerar introdução.");
+    const extractedDesenvolvimento =
+      extractSection(
+        parsedText,
+        "<DESENVOLVIMENTO_START>",
+        "<DESENVOLVIMENTO_END>",
+      ) ||
+      (sections.desenvolvimento.mode === "manual"
+        ? sections.desenvolvimento.text
+        : "Erro ao gerar desenvolvimento.");
+    const extractedConclusao =
+      extractSection(parsedText, "<CONCLUSAO_START>", "<CONCLUSAO_END>") ||
+      (sections.conclusao.mode === "manual"
+        ? sections.conclusao.text
+        : "Erro ao gerar conclusão.");
+    const extractedApelo =
+      extractSection(parsedText, "<APELO_START>", "<APELO_END>") ||
+      (sections.apelo.mode === "manual"
+        ? sections.apelo.text
+        : "Erro ao gerar apelo.");
+    const extractedReferencias =
+      extractSection(parsedText, "<REFERENCIAS_START>", "<REFERENCIAS_END>") ||
+      "Nenhuma referência encontrada.";
 
     // 6. Build the actual high-fidelity DOCX document locally
     const docBuffer = await createSermonDocx(
@@ -682,7 +916,7 @@ Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamen
       extractedDesenvolvimento,
       extractedConclusao,
       extractedApelo,
-      extractedReferencias
+      extractedReferencias,
     );
 
     const docxBase64 = docBuffer.toString("base64");
@@ -697,10 +931,13 @@ Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamen
       referencias: extractedReferencias,
       docxBase64: docxBase64,
     });
-
   } catch (error: any) {
     console.error("Erro na geração do sermão RAG:", error);
-    res.status(500).json({ error: error.message || "Ocorreu um erro interno na geração do sermão." });
+    res
+      .status(500)
+      .json({
+        error: error.message || "Ocorreu um erro interno na geração do sermão.",
+      });
   }
 });
 
@@ -713,7 +950,7 @@ function createSermonDocx(
   desenvolvimento: string,
   conclusao: string,
   apelo: string,
-  referencias: string
+  referencias: string,
 ): Promise<Buffer> {
   const doc = new Document({
     sections: [
@@ -721,10 +958,10 @@ function createSermonDocx(
         properties: {
           page: {
             margin: {
-              top: 1701,    // 3 cm (in twips/dxa)
+              top: 1701, // 3 cm (in twips/dxa)
               bottom: 1134, // 2 cm
-              left: 1701,   // 3 cm
-              right: 1134,  // 2 cm
+              left: 1701, // 3 cm
+              right: 1134, // 2 cm
             },
           },
         },
