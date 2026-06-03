@@ -219,8 +219,8 @@ async function loadTheologicalContext(passage: string, theme: string): Promise<s
 // Parse text for footnotes markers e.g. [^1], [^2], converting them into TextRuns with superscripts for docx
 function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun[] {
   const runs: TextRun[] = [];
-  // Regex to extract footnotes [^1], [^2]
-  const regex = /\[\^(\d+)\]/g;
+  // Regex to extract unicode footnotes
+  const regex = /([¹²³⁴⁵⁶⁷⁸⁹⁰]+)/g;
   let lastIndex = 0;
   let match;
 
@@ -241,10 +241,12 @@ function parseParagraphToRuns(text: string, forceBold: boolean = false): TextRun
     }
 
     // Append superscript foot index
-    const fnIndex = match[1];
+    const map: Record<string, string> = {'¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁰':'0'};
+    const cleanFnIndex = match[1].replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]/g, (m: string) => map[m] || m);
+
     runs.push(
       new TextRun({
-        text: fnIndex,
+        text: cleanFnIndex,
         superScript: true,
         font: "Arial",
         size: 16, // smaller superscript size
@@ -292,7 +294,7 @@ function createSermonParagraphs(text: string, isDevelopment: boolean = false): P
     }
 
     return new Paragraph({
-      alignment: AlignmentType.JUSTIFIED,
+      alignment: AlignmentType.BOTH,
       spacing: {
         line: 360,    // 1.5 line spacing
         after: 140,   // standard padding
@@ -311,7 +313,7 @@ function createReferenceParagraphs(text: string): Paragraph[] {
 
   return lines.map(line => {
     return new Paragraph({
-      alignment: AlignmentType.JUSTIFIED,
+      alignment: AlignmentType.BOTH,
       spacing: {
         line: 240,   // Simple spacing for ABNT references
         after: 80,
@@ -388,7 +390,7 @@ Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de tex
 REGRAS DE FORMATAÇÃO E ESTRUTURA (OBRIGATÓRIO):
 - Estrutura Dinâmica e Fiel: Você não deve usar nenhum tema predefinido. O seu dever é ler o documento enviado e seguir EXATAMENTE a estrutura de tópicos que o autor criou nele (por exemplo: TÍTULO, AUTOR, TEXTO, INTRODUÇÃO, DESENVOLVIMENTO, APELO). Adapte-se ao formato do arquivo fornecido.
 - Proibição Absoluta de HTML: É estritamente PROIBIDO gerar tags HTML no texto (como <br>, <br><br>, <b>, etc.). Para pular linhas ou formatar o texto, utilize exclusivamente as quebras de linha e marcações padrão do Markdown.
-- Citações e Notas de Rodapé: Em hipótese alguma crie uma seção genérica de "Referências" ou "Bibliografia". Quando você usar uma citação ou referência, insira a anotação de nota de rodapé no clássico formato Markdown imediatamente após a palavra (exemplo: [^1], [^2], [^3]). No final do sermão, crie uma seção chamada "Notas de Rodapé" contendo EXCLUSIVAMENTE as fontes que foram de fato citadas no texto, utilizando o formato "[^1]: Fonte...". Nunca inclua referências não utilizadas.
+- Citações e Números Sobrescritos (PROIBIDO INVENTAR FONTES): É ESTRITAMENTE PROIBIDO inventar fontes, livros ou autores. Se você for citar uma referência que o usuário já incluiu no material, você DEVE usar caracteres numéricos Unicode sobrescritos colados na palavra (exemplo: palavra¹, palavra², palavra³). Não use colchetes, nem o formato [^1]. No final do documento, crie uma seção chamada "REFERÊNCIAS" listando os números normais assim: "1. Texto da referência".
 - Integração do Contexto Manual: O usuário enviará informações extras sobre o "Público-alvo/Contexto" e "Minhas ideias". Molde a linguagem da pregação para atingir perfeitamente esse público específico e incorpore as ideias manuais de forma natural ao longo do sermão.
 - O Melhor Comentário: Exatamente no final do sermão, após o Apelo/Conclusão e ANTES das Notas de Rodapé, você deve criar um tópico chamado "Melhor Comentário". Nele, insira obrigatoriamente o seguinte texto com o link exato: Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/`;
 
@@ -574,7 +576,7 @@ Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de tex
 REGRAS DE FORMATAÇÃO E ESTRUTURA (OBRIGATÓRIO):
 - Estrutura Dinâmica e Fiel: Você não deve usar nenhum tema predefinido. O seu dever é ler o documento enviado e seguir EXATAMENTE a estrutura de tópicos que o autor criou nele. Adapte-se ao formato do arquivo fornecido.
 - Proibição Absoluta de HTML: É estritamente PROIBIDO gerar tags HTML no texto (como <br>, <br><br>, <b>, etc.). Para pular linhas ou formatar o texto, utilize exclusivamente as quebras de linha e marcações padrão do Markdown.
-- Citações e Notas de Rodapé: Em hipótese alguma crie uma seção genérica de "Referências" ou "Bibliografia". Quando você usar uma citação ou referência, insira a anotação de nota de rodapé no clássico formato Markdown imediatamente após a palavra (exemplo: [^1], [^2], [^3]). No final do sermão, crie uma seção chamada "Notas de Rodapé" contendo EXCLUSIVAMENTE as fontes que foram de fato citadas no texto, utilizando o formato "[^1]: Fonte...". Nunca inclua referências não utilizadas.
+- Citações e Números Sobrescritos (PROIBIDO INVENTAR FONTES): É ESTRITAMENTE PROIBIDO inventar fontes, livros ou autores. Se você for citar uma referência que o usuário já incluiu no material, você DEVE usar caracteres numéricos Unicode sobrescritos colados na palavra (exemplo: palavra¹, palavra², palavra³). Não use colchetes, nem o formato [^1]. No final do documento, crie uma seção chamada "REFERÊNCIAS" listando os números normais assim: "1. Texto da referência".
 - Integração do Contexto Manual: O usuário enviará informações extras sobre o "Público-alvo/Contexto" e "Minhas ideias". Molde a linguagem da pregação para atingir perfeitamente esse público específico e incorpore as ideias manuais de forma natural ao longo do sermão.
 - O Melhor Comentário: Exatamente no final do sermão, após o Apelo/Conclusão e ANTES das Notas de Rodapé, você deve criar um tópico chamado "Melhor Comentário". Nele, insira obrigatoriamente o seguinte texto com o link exato: Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
 
