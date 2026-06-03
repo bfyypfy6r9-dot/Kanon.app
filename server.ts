@@ -24,6 +24,19 @@ const getSupabase = () => {
   return _supabaseClient;
 };
 
+let _supabaseAdmin: any = null;
+const getSupabaseAdmin = () => {
+  if (!_supabaseAdmin) {
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    if (!url || !serviceKey) {
+      throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
+    }
+    _supabaseAdmin = createClient(url, serviceKey);
+  }
+  return _supabaseAdmin;
+};
+
 const app = express();
 const PORT = 3000;
 
@@ -138,27 +151,6 @@ async function queryGeminiWithRetry(
 app.use(express.json());
 
 // Auth Endpoints
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const { data, error } = await getSupabase().auth.signUp({
-      email,
-      password,
-    });
-    if (error) {
-      if (error.message.includes("User already registered")) {
-        return res
-          .status(400)
-          .json({ error: "Esta conta de e-mail já está registrada." });
-      }
-      return res.status(400).json({ error: error.message });
-    }
-    res.json({ success: true, session: data.session });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});
-
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -171,9 +163,180 @@ app.post("/api/auth/login", async (req, res) => {
         .status(400)
         .json({ error: "Usuário não encontrado ou senha incorreta." });
     }
-    res.json({ success: true, session: data.session });
+
+    // Fetch profile
+    const { data: profile } = await getSupabase()
+      .from("perfis")
+      .select("*")
+      .eq("id", data.user.id)
+      .single();
+
+    if (profile && !profile.ativo) {
+      return res
+        .status(403)
+        .json({ error: "Usuário inativo. Contate o administrador." });
+    }
+
+    const userData = {
+      id: data.user.id,
+      email: data.user.email,
+      role: profile?.role || "usuario",
+      ativo: profile?.ativo !== false,
+      plano: profile?.plano || "cortesia",
+    };
+
+    res.json({ success: true, session: data.session, user: userData });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/auth/session", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Missing auth" });
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error,
+    } = await getSupabase().auth.getUser(token);
+    if (error || !user)
+      return res.status(401).json({ error: "Invalid session" });
+
+    const { data: profile } = await getSupabase()
+      .from("perfis")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+
+    const userData = {
+      id: user.id,
+      email: user.email,
+      role: profile?.role || "usuario",
+      ativo: profile?.ativo !== false,
+      plano: profile?.plano || "cortesia",
+    };
+
+    res.json({ success: true, session: { user }, user: userData });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/admin/usuarios", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Não autorizado" });
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+    } = await getSupabase().auth.getUser(token);
+    if (!user) return res.status(401).json({ error: "Não autorizado" });
+
+    const { data: adminProfile } = await getSupabaseAdmin()
+      .from("perfis")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (adminProfile?.role !== "admin") {
+      return res.status(403).json({ error: "Acesso negado." });
+    }
+
+    const { data: usuarios, error } = await getSupabaseAdmin()
+      .from("perfis")
+      .select("*")
+      .order("email");
+    if (error) throw error;
+
+    res.json({ usuarios });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch("/api/admin/usuario/:id/ativo", async (req, res) => {
+  try {
+    const { ativo } = req.body;
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Não autorizado" });
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+    } = await getSupabase().auth.getUser(token);
+    if (!user) return res.status(401).json({ error: "Não autorizado" });
+
+    const { data: adminProfile } = await getSupabaseAdmin()
+      .from("perfis")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (adminProfile?.role !== "admin")
+      return res.status(403).json({ error: "Acesso negado." });
+
+    const { error } = await getSupabaseAdmin()
+      .from("perfis")
+      .update({ ativo })
+      .eq("id", req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/admin/criar-usuario", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.replace("Bearer ", "") || "";
+    const {
+      data: { user },
+    } = await getSupabase().auth.getUser(token);
+
+    if (!user) return res.status(401).json({ error: "Não autorizado" });
+
+    const { data: adminProfile } = await getSupabaseAdmin()
+      .from("perfis")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (adminProfile?.role !== "admin")
+      return res.status(403).json({ error: "Acesso negado." });
+
+    // Creates user forcing confirmation
+    const { data: newUser, error: createError } =
+      await getSupabaseAdmin().auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      });
+
+    if (createError) throw createError;
+
+    // insert into perfis
+    const { error: profileError } = await getSupabaseAdmin()
+      .from("perfis")
+      .insert({
+        id: newUser.user.id,
+        email,
+        role: "usuario",
+        ativo: true,
+        plano: "cortesia",
+      });
+
+    if (profileError) {
+      // It might be a good idea to cleanup the user if profile insert fails,
+      // but keeping it simple for now
+      throw profileError;
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
