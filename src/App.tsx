@@ -21,11 +21,11 @@ import { jsPDF } from "jspdf";
 
 const RenderSermonText = ({ text }: { text: string }) => {
   if (!text) return null;
-  const parts = text.split(/(\[\^\d+\])/g);
+  const parts = text.split(/(\[\^?\d+\])/g);
   return (
     <>
       {parts.map((part, i) => {
-        const match = part.match(/\[\^(\d+)\]/);
+        const match = part.match(/\[\^?(\d+)\]/);
         if (match) {
           return <sup key={i} className="text-[10px] text-[#D4AF37] font-bold ml-0.5">{match[1]}</sup>;
         }
@@ -305,7 +305,14 @@ export default function App() {
             xPos += 12.5; // 1.25cm indent
           }
           
-          doc.text(line, xPos, y, { align: align });
+          // Replace unicode superscripts with standard brackets for PDF support (Helvetica might lack glyphs)
+          const map: Record<string, string> = {'¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁰':'0'};
+          const safeLine = line.replace(/[¹²³⁴⁵⁶⁷⁸⁹⁰]+/g, (m) => {
+            const digits = m.split('').map(char => map[char] || char).join('');
+            return `[${digits}]`;
+          });
+          
+          doc.text(safeLine, xPos, y, { align: align });
           y += 7.5; // approx 1.5 line height spacing
         });
         y += 3; // space after paragraph
