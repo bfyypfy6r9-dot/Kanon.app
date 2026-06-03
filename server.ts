@@ -1,15 +1,28 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import "dotenv/config";
 import crypto from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { Document, Paragraph, TextRun, AlignmentType, Packer } from "docx";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL || "";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+let _supabaseClient: any = null;
+const getSupabase = () => {
+  if (!_supabaseClient) {
+    const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+    const key =
+      process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+    if (!url || !key) {
+      throw new Error(
+        "As credenciais do Supabase não estão configuradas (SUPABASE_URL, SUPABASE_ANON_KEY).",
+      );
+    }
+    _supabaseClient = createClient(url, key);
+  }
+  return _supabaseClient;
+};
 
 const app = express();
 const PORT = 3000;
@@ -123,6 +136,46 @@ async function queryGeminiWithRetry(
 }
 
 app.use(express.json());
+
+// Auth Endpoints
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const { data, error } = await getSupabase().auth.signUp({
+      email,
+      password,
+    });
+    if (error) {
+      if (error.message.includes("User already registered")) {
+        return res
+          .status(400)
+          .json({ error: "Esta conta de e-mail já está registrada." });
+      }
+      return res.status(400).json({ error: error.message });
+    }
+    res.json({ success: true, session: data.session });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const { data, error } = await getSupabase().auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      return res
+        .status(400)
+        .json({ error: "Usuário não encontrado ou senha incorreta." });
+    }
+    res.json({ success: true, session: data.session });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 // File paths
 const pastaBase = path.join(process.cwd(), "base_teologica");
@@ -452,18 +505,16 @@ app.post("/api/generate-section", async (req, res) => {
 
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      return res
-        .status(401)
-        .json({
-          error:
-            "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão.",
-        });
+      return res.status(401).json({
+        error:
+          "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão.",
+      });
     }
     const token = authHeader.replace("Bearer ", "");
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } = await getSupabase().auth.getUser(token);
 
     if (authError || !user) {
       return res
@@ -472,21 +523,17 @@ app.post("/api/generate-section", async (req, res) => {
     }
 
     if (!passage || !author || !title) {
-      return res
-        .status(400)
-        .json({
-          error: "Campos obrigatórios (Passagem, Autor e Título) ausentes.",
-        });
+      return res.status(400).json({
+        error: "Campos obrigatórios (Passagem, Autor e Título) ausentes.",
+      });
     }
 
     const rCtx = await loadTheologicalContext(passage, title);
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res
-        .status(500)
-        .json({
-          error: "A chave GEMINI_API_KEY não foi configurada nos segredos.",
-        });
+      return res.status(500).json({
+        error: "A chave GEMINI_API_KEY não foi configurada nos segredos.",
+      });
     }
 
     const ai = new GoogleGenAI({
@@ -611,18 +658,14 @@ ${rCtx || "Comentários teológicos clássicos."}
   } catch (error: any) {
     console.error("Erro ao gerar seção:", error);
     if (error.status === 503 || error.message?.includes("503")) {
-      res
-        .status(503)
-        .json({
-          error:
-            "O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.",
-        });
+      res.status(503).json({
+        error:
+          "O serviço de inteligência artificial está temporariamente indisponível (Erro 503). Por favor, tente novamente em instantes.",
+      });
     } else {
-      res
-        .status(500)
-        .json({
-          error: error.message || "Ocorreu um erro ao gerar esta seção.",
-        });
+      res.status(500).json({
+        error: error.message || "Ocorreu um erro ao gerar esta seção.",
+      });
     }
   }
 });
@@ -643,18 +686,16 @@ app.post("/api/bundle-docx", async (req, res) => {
 
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      return res
-        .status(401)
-        .json({
-          error:
-            "Você precisa criar uma conta ou fazer login na barra lateral para gerar o documento.",
-        });
+      return res.status(401).json({
+        error:
+          "Você precisa criar uma conta ou fazer login na barra lateral para gerar o documento.",
+      });
     }
     const token = authHeader.replace("Bearer ", "");
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } = await getSupabase().auth.getUser(token);
 
     if (authError || !user) {
       return res
@@ -677,11 +718,9 @@ app.post("/api/bundle-docx", async (req, res) => {
     res.json({ success: true, docxBase64 });
   } catch (error: any) {
     console.error("Erro ao empacotar DOCX:", error);
-    res
-      .status(500)
-      .json({
-        error: error.message || "Erro de formatação do documento DOCX.",
-      });
+    res.status(500).json({
+      error: error.message || "Erro de formatação do documento DOCX.",
+    });
   }
 });
 
@@ -702,18 +741,16 @@ app.post("/api/generate", async (req, res) => {
     // Validate absolute requirement that users must be logged in using Supabase JWT
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      return res
-        .status(401)
-        .json({
-          error:
-            "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão.",
-        });
+      return res.status(401).json({
+        error:
+          "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão.",
+      });
     }
     const token = authHeader.replace("Bearer ", "");
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } = await getSupabase().auth.getUser(token);
 
     if (authError || !user) {
       return res
@@ -722,11 +759,9 @@ app.post("/api/generate", async (req, res) => {
     }
 
     if (!passage || !author || !title) {
-      return res
-        .status(400)
-        .json({
-          error: "Campos obrigatórios (Passagem, Autor e Título) ausentes.",
-        });
+      return res.status(400).json({
+        error: "Campos obrigatórios (Passagem, Autor e Título) ausentes.",
+      });
     }
 
     if (!sections) {
@@ -740,12 +775,10 @@ app.post("/api/generate", async (req, res) => {
 
     if (!rCtx || rCtx.trim() === "") {
       console.log("Nenhum texto encontrado nos arquivos. rCtx is empty.");
-      return res
-        .status(400)
-        .json({
-          error:
-            "Nenhum texto extraído dos arquivos na pasta base_teologica. Certifique-se de usar arquivos .txt.",
-        });
+      return res.status(400).json({
+        error:
+          "Nenhum texto extraído dos arquivos na pasta base_teologica. Certifique-se de usar arquivos .txt.",
+      });
     } else {
       console.log(
         "Texto extraído dos arquivos (preview): ",
@@ -755,11 +788,9 @@ app.post("/api/generate", async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res
-        .status(500)
-        .json({
-          error: "A chave GEMINI_API_KEY não foi configurada nos segredos.",
-        });
+      return res.status(500).json({
+        error: "A chave GEMINI_API_KEY não foi configurada nos segredos.",
+      });
     }
 
     const ai = new GoogleGenAI({
@@ -933,11 +964,9 @@ Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamen
     });
   } catch (error: any) {
     console.error("Erro na geração do sermão RAG:", error);
-    res
-      .status(500)
-      .json({
-        error: error.message || "Ocorreu um erro interno na geração do sermão.",
-      });
+    res.status(500).json({
+      error: error.message || "Ocorreu um erro interno na geração do sermão.",
+    });
   }
 });
 
