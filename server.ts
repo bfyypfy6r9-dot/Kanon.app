@@ -356,7 +356,7 @@ function extractSection(text: string, startTag: string, endTag: string): string 
 
 app.post("/api/generate-section", async (req, res) => {
   try {
-    const { section, passage, author, title, numPoints, userEmail, generatedTexts } = req.body;
+    const { section, passage, author, title, targetAudience, userDrafts, numPoints, userEmail, generatedTexts } = req.body;
 
     if (!userEmail) {
       return res.status(401).json({ error: "Você precisa criar uma conta ou fazer login na barra lateral para gerar o sermão." });
@@ -383,43 +383,14 @@ app.post("/api/generate-section", async (req, res) => {
 
     let systemInstruction = `Você atua como um processador de dados rigoroso para elaboração de sermões.
 REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
-Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo. É terminantemente proibido inventar, deduzir ou adicionar referências bibliográficas, citações ou autores que não estejam literalmente escritos no texto fornecido.
-REGRA DE FORMATAÇÃO (LAYOUT OBRIGATÓRIO):
-Você é um assistente teológico profissional. A sua saída de texto deve ser rigorosamente limpa, acadêmica e seguir exatamente a estrutura do documento padrão abaixo.
-REGRAS DE BLOQUEIO (NÃO FAÇA ISSO):
-- NUNCA repita o título, autor ou texto bíblico no meio do sermão. Eles pertencem APENAS ao cabeçalho.
-- NUNCA use formatação Markdown como #, ## ou *. Use apenas as tags HTML permitidas (<b> para negrito e <br> para quebra de linha).
-- NUNCA crie textos corridos longos no Desenvolvimento. Use obrigatoriamente a estrutura de tópicos numerados seguidos de marcadores (bullet points ou •).
+Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo.
 
-ESTRUTURA DE SAÍDA EXIGIDA:
-Reproduza exatamente este esqueleto em todas as suas respostas, usando APENAS as seções que você foi solicitado a gerar (se estiver gerando apenas uma seção, retorne apenas ela formatada assim):
-
-TEXTO - [Referência Bíblica]
-[TÍTULO DO SERMÃO EM MAIÚSCULAS]
-[Nome do Autor]
-
-INTRODUÇÃO
-[Primeiro parágrafo da introdução, direto ao assunto]
-[Segundo parágrafo da introdução]
-[Terceiro parágrafo da introdução]
-
-DESENVOLVIMENTO
-1. [Título do Primeiro Ponto Aqui]:
-• [Primeira explicação, aplicação ou versículo de apoio]
-• [Segunda explicação, aplicação ou versículo de apoio]
-• [Terceira explicação, aplicação ou versículo de apoio]
-(Continue a numeração em tags <b> até o limite de pontos necessários)
-
-CONCLUSÃO
-[Primeiro parágrafo da conclusão]
-[Segundo parágrafo da conclusão]
-
-APELO
-• [Primeiro ponto do apelo final]
-• [Segundo ponto do apelo final]
-
-REFERÊNCIAS
-[Liste os autores e materiais citados no texto base].`;
+REGRAS DE FORMATAÇÃO E ESTRUTURA (OBRIGATÓRIO):
+- Estrutura Dinâmica e Fiel: Você não deve usar nenhum tema predefinido. O seu dever é ler o documento enviado e seguir EXATAMENTE a estrutura de tópicos que o autor criou nele (por exemplo: TÍTULO, AUTOR, TEXTO, INTRODUÇÃO, DESENVOLVIMENTO, APELO). Adapte-se ao formato do arquivo fornecido.
+- Proibição Absoluta de HTML: É estritamente PROIBIDO gerar tags HTML no texto (como <br>, <br><br>, <b>, etc.). Para pular linhas ou formatar o texto, utilize exclusivamente as quebras de linha e marcações padrão do Markdown.
+- Citações e Notas de Rodapé: Em hipótese alguma crie uma seção genérica de "Referências" ou "Bibliografia". Quando você usar uma citação ou referência, insira a anotação de nota de rodapé no clássico formato Markdown imediatamente após a palavra (exemplo: [^1], [^2], [^3]). No final do sermão, crie uma seção chamada "Notas de Rodapé" contendo EXCLUSIVAMENTE as fontes que foram de fato citadas no texto, utilizando o formato "[^1]: Fonte...". Nunca inclua referências não utilizadas.
+- Integração do Contexto Manual: O usuário enviará informações extras sobre o "Público-alvo/Contexto" e "Minhas ideias". Molde a linguagem da pregação para atingir perfeitamente esse público específico e incorpore as ideias manuais de forma natural ao longo do sermão.
+- O Melhor Comentário: Exatamente no final do sermão, após o Apelo/Conclusão e ANTES das Notas de Rodapé, você deve criar um tópico chamado "Melhor Comentário". Nele, insira obrigatoriamente o seguinte texto com o link exato: Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/`;
 
     let promptText = "";
 
@@ -435,7 +406,7 @@ Lembre-se de ir direto ao ponto, não escreva cabeçalhos de título ou autor.
 
 CRITÉRIO CRÍTICO:
 1. Use estritamente o contexto fornecido abaixo.
-2. Siga as regras de formatação (sem markdown, sem símbolos).
+2. Siga as regras de formatação (formato Markdown limpo, SEM HTML).
 3. A introdução deve conter exatamente 2 parágrafos.
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
@@ -448,10 +419,10 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos.
+Gere o Desenvolvimento do sermão focado especificamente em exatamente ${numPoints || 3} pontos teológicos. Processe as referências e os documentos da base teológica (RAG) fornecida para redigir o desenvolvimento de forma robusta e baseada no contexto histórico.
 Lembre-se de ir direto ao ponto, não escreva cabeçalhos de título, comece direto pelo primeiro tópico.
 
-Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
+Siga as regras de formatação estritas (formato Markdown puro, NENHUMA tag HTML).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -466,7 +437,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 Gere a Conclusão do sermão. Ela deve conter exatamente 2 (dois) parágrafos.
 Lembre-se de ir direto ao ponto, não escreva o cabeçalho 'CONCLUSÃO'.
 
-Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
+Siga as regras de formatação estritas (formato Markdown puro, NENHUMA tag HTML).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -481,7 +452,7 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 Gere o Apelo do sermão. Ele deve conter exatamente 2 (dois) parágrafos.
 Lembre-se de ir direto ao final, não escreva o cabeçalho 'APELO'.
 
-Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem símbolos especiais).
+Siga as regras de formatação estritas (formato Markdown puro, NENHUMA tag HTML).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -493,10 +464,14 @@ DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 
-Gere a lista de referências consultadas no contexto. Formate como texto corrido ou linhas simples.
-Lembre-se de não adicionar o título 'REFERÊNCIAS'.
+Obrigatório começar esta seção com:
+Melhor Comentário:
+Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
 
-Siga as regras de formatação estritas (sem blocos de código, sem marcações markdown e sem números entre colchetes).
+Em seguida, liste as Notas de Rodapé correspondentes aos números sobrescritos usados nas outras seções. Formate apenas as fontes que foram ÚTIL e DE FATO citadas.
+Não use o título "REFERÊNCIAS". Use o formato de Notas de Rodapé.
+
+Siga as regras de formatação estritas (formato Markdown puro, NENHUMA tag HTML).
 
 CONTEXTO TEOLÓGICO SEGURO (RAG):
 ${rCtx || "Comentários teológicos clássicos."}
@@ -550,10 +525,10 @@ app.post("/api/bundle-docx", async (req, res) => {
   }
 });
 
-// 2. Sermon Generation and RAG Engine Endpoint
+  // 2. Sermon Generation and RAG Engine Endpoint
 app.post("/api/generate", async (req, res) => {
   try {
-    const { passage, author, title, sections, numPoints, userEmail } = req.body;
+    const { passage, author, title, targetAudience, userDrafts, sections, numPoints, userEmail } = req.body;
 
     // Validate absolute requirement that users must be logged in
     if (!userEmail) {
@@ -594,47 +569,21 @@ app.post("/api/generate", async (req, res) => {
 
     const promptText = `Você atua como um processador de dados rigoroso para elaboração de sermões.
 REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
-Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo. É terminantemente proibido inventar, deduzir ou adicionar referências bibliográficas, citações ou autores que não estejam literalmente escritos no texto fornecido.
-REGRA DE FORMATAÇÃO (LAYOUT OBRIGATÓRIO):
-Você é um assistente teológico profissional. A sua saída de texto deve ser rigorosamente limpa, acadêmica e a estrutura dos pontos deve ser respeitada.
-REGRAS DE BLOQUEIO (NÃO FAÇA ISSO):
-- NUNCA repita o título, autor ou texto bíblico no meio do sermão. Eles pertencem APENAS ao cabeçalho externo.
-- NUNCA use formatação Markdown como #, ## ou *. Use APENAS as tags HTML permitidas (<b> para negrito e <br> para quebra de linha).
-- NUNCA crie textos corridos longos no Desenvolvimento. Use OBRIGATORIAMENTE a estrutura de tópicos numerados seguidos de marcadores (bullet points com a bolinha •).
+Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo.
 
-ESTRUTURA DE SAÍDA EXIGIDA:
-Sua resposta comporá cada parte do documento separadamente. Siga os padrões internos para o conteúdo de cada bloco de texto:
-
-INTRODUÇÃO
-[Gere o texto introdutório. Não coloque subtítulos ou cabeçalhos. Vá direto para os parágrafos.]
-
-DESENVOLVIMENTO
-(Formato obrigatório para o conteúdo do Desenvolvimento):
-1. <b>[Título do Primeiro Ponto Aqui]</b>:
-• [Primeira explicação, aplicação ou versículo de apoio]
-• [Segunda explicação, aplicação ou versículo de apoio]
-• [Terceira explicação, aplicação ou versículo de apoio]
-
-2. <b>[Título do Segundo Ponto Aqui]</b>:
-• [Primeira explicação, aplicação ou versículo de apoio]
-• [Segunda explicação, aplicação ou versículo de apoio]
-(Continue com este mesmo padrão exato para todos os pontos)
-
-CONCLUSÃO
-[Gere os parágrafos da conclusão de forma fluida]
-
-APELO
-(Formato obrigatório para o Apelo):
-• [Primeiro ponto do apelo final]
-• [Segundo ponto do apelo final]
-
-REFERÊNCIAS
-[Liste os autores e materiais citados APENAS SE houver referências. Siga como texto corrido na base, sem marcadores de asterisco ou chaves].
+REGRAS DE FORMATAÇÃO E ESTRUTURA (OBRIGATÓRIO):
+- Estrutura Dinâmica e Fiel: Você não deve usar nenhum tema predefinido. O seu dever é ler o documento enviado e seguir EXATAMENTE a estrutura de tópicos que o autor criou nele. Adapte-se ao formato do arquivo fornecido.
+- Proibição Absoluta de HTML: É estritamente PROIBIDO gerar tags HTML no texto (como <br>, <br><br>, <b>, etc.). Para pular linhas ou formatar o texto, utilize exclusivamente as quebras de linha e marcações padrão do Markdown.
+- Citações e Notas de Rodapé: Em hipótese alguma crie uma seção genérica de "Referências" ou "Bibliografia". Quando você usar uma citação ou referência, insira a anotação de nota de rodapé no clássico formato Markdown imediatamente após a palavra (exemplo: [^1], [^2], [^3]). No final do sermão, crie uma seção chamada "Notas de Rodapé" contendo EXCLUSIVAMENTE as fontes que foram de fato citadas no texto, utilizando o formato "[^1]: Fonte...". Nunca inclua referências não utilizadas.
+- Integração do Contexto Manual: O usuário enviará informações extras sobre o "Público-alvo/Contexto" e "Minhas ideias". Molde a linguagem da pregação para atingir perfeitamente esse público específico e incorpore as ideias manuais de forma natural ao longo do sermão.
+- O Melhor Comentário: Exatamente no final do sermão, após o Apelo/Conclusão e ANTES das Notas de Rodapé, você deve criar um tópico chamado "Melhor Comentário". Nele, insira obrigatoriamente o seguinte texto com o link exato: Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
 
 DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
+- Público-alvo / Linguagem: "${targetAudience || 'Geral'}"
+- Meus Rascunhos / Ideias: "${userDrafts || 'Nenhum rascunho fornecido'}"
 
 CONVENÇÃO DE SEÇÕES DE CONTEÚDO:
 As quatro partes fundamentais do sermão são: Introdução, Desenvolvimento, Conclusão, Apelo.
@@ -652,7 +601,7 @@ ${
 Parte 2 - Desenvolvimento:
 ${
   sections.desenvolvimento.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " + (numPoints || 3) + " pontos teológicos detalhados. NÃO escreva a palavra 'Desenvolvimento', comece direto do primeiro ponto numerado."
+    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " + (numPoints || 3) + " pontos teológicos detalhados. Processe as referências e os documentos da base teológica (RAG) para redigir o desenvolvimento de forma robusta e baseada no contexto histórico. NÃO escreva a palavra 'Desenvolvimento', comece direto do primeiro ponto numerado."
     : "O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: \"" + sections.desenvolvimento.text + "\" (Não altere este texto manual em hipótese alguma)."
 }
 
@@ -676,14 +625,14 @@ ${rCtx}
 ----------------------------------------------------
 
 Por favor, escreva o sermão de modo estruturado e polido.
-Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seguir EXATAMENTE o formulário e os delimitadores HTML abaixo no corpo de texto gerado, sem NENHUM caractere markdown como chaves, parênteses ou colchetes:
+Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seguir EXATAMENTE o formulário e os delimitadores XML abaixo no corpo de texto gerado, sem NENHUM caractere markdown oculto. Estas tags delimitadoras são as ÚNICAS "tags" permitidas:
 
 <INTRODUCAO_START>
 (Texto da introdução)
 <INTRODUCAO_END>
 
 <DESENVOLVIMENTO_START>
-(Texto do desenvolvimento estruturado)
+(Texto do desenvolvimento estruturado em formato Markdown sem HTML)
 <DESENVOLVIMENTO_END>
 
 <CONCLUSAO_START>
@@ -695,9 +644,10 @@ Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seg
 <APELO_END>
 
 <REFERENCIAS_START>
-(Lista de Referências correspondentes no formato:
-Comentário Exegético Maclaren - Vol II, pág. 112 Romanos 8:1
-Comentário Bíblico de Genebra, Pág. 345 Efésios 2:8)
+Melhor Comentário:
+Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
+
+(Lista de Notas de Rodapé usadas no texto acima)
 <REFERENCIAS_END>
 
 Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamente a verdade teológica dos textos sem inventar.
@@ -884,7 +834,7 @@ function createSermonDocx(
             spacing: { before: 600, after: 240 },
             children: [
               new TextRun({
-                text: "REFERÊNCIAS",
+                text: "NOTAS DE RODAPÉ",
                 font: "Arial",
                 size: 24,
                 bold: true,
