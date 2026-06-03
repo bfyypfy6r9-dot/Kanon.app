@@ -20,9 +20,20 @@ import { SermonResponse, UserSession } from "./types";
 import { jsPDF } from "jspdf";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || "";
+
+const supabase = supabaseUrl && supabaseAnonKey 
+  ? createClient(supabaseUrl, supabaseAnonKey) 
+  : ({
+      auth: {
+        getSession: async () => ({ data: { session: null } }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+        signUp: async () => ({ error: new Error("VITE_SUPABASE_URL e KEY não configuradas no frontend.") }),
+        signInWithPassword: async () => ({ error: new Error("VITE_SUPABASE_URL e KEY não configuradas.") }),
+        signOut: async () => {}
+      }
+    } as any);
 
 const RenderSermonText = ({ text }: { text: string }) => {
   if (!text) return null;
