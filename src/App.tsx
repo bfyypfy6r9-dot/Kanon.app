@@ -519,20 +519,48 @@ export default function App() {
             </h1>
           </div>
 
-          <div className="flex gap-4">
-            <a href="https://bestcommentaries.com/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-white border border-[#D1CEC5] hover:border-[#1A1A1A] text-[#1A1A1A] text-xs font-bold uppercase tracking-widest px-4 py-2 transition-colors group">
-              <BookOpen className="w-4 h-4 text-[#8B7E66] group-hover:text-[#1A1A1A]" />
-              Descobrir Melhor Comentário
-              <ExternalLink className="w-3.5 h-3.5 ml-1 opacity-50 transition-opacity group-hover:opacity-100" />
-            </a>
-          </div>
+          {currentUser && (
+            <div className="flex gap-4">
+              <a href="https://bestcommentaries.com/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 bg-white border border-[#D1CEC5] hover:border-[#1A1A1A] text-[#1A1A1A] text-xs font-bold uppercase tracking-widest px-4 py-2 transition-colors group">
+                <BookOpen className="w-4 h-4 text-[#8B7E66] group-hover:text-[#1A1A1A]" />
+                Descobrir Melhor Comentário
+                <ExternalLink className="w-3.5 h-3.5 ml-1 opacity-50 transition-opacity group-hover:opacity-100" />
+              </a>
+            </div>
+          )}
         </header>
 
-        {viewMode === "admin" ? (
-          <PainelAdmin />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1" id="dashboard_grid">
-            <div className={` ${sermonResult || generating ? "lg:col-span-7" : "lg:col-span-12"} space-y-6 `} id="config_col">
+        <div className="relative flex-1 flex flex-col min-h-0">
+          {!currentUser && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-start text-center p-6 bg-[#F4F1EA]/5 backdrop-blur-[6px] pt-32 transition-all" id="welcome-showcase">
+              <div className="mb-8 p-10 bg-white/60 shadow-xl border border-white/50 backdrop-blur-xl rounded-3xl max-w-xl mx-auto drop-shadow-sm">
+                <Award className="w-16 h-16 text-[#D4AF37] mx-auto mb-6 opacity-90 drop-shadow-sm" />
+                <h2 className="text-3xl md:text-4xl font-serif font-bold text-[#1A1A1A] mb-4">
+                  Bem-vindo ao Kanon.app
+                </h2>
+                <p className="text-[#1A1A1A]/80 max-w-lg mx-auto text-base leading-relaxed font-serif font-medium">
+                  Seu assistente para exegese e estruturação homilética fundamentada nas Escrituras. Construa sermões com precisão e profundidade teológica.
+                </p>
+              </div>
+              
+              <div className="bg-white/80 backdrop-blur-xl border border-white/50 p-6 shadow-xl max-w-sm mx-auto w-full rounded-2xl drop-shadow-md">
+                 <Lock className="w-6 h-6 text-[#1A1A1A]/50 mx-auto mb-3" />
+                 <p className="text-xs font-sans font-bold uppercase tracking-widest text-[#1A1A1A]">
+                  Área de Trabalho Protegida
+                 </p>
+                 <p className="text-[11px] text-[#8B7E66] mt-2 font-serif font-medium">
+                  Por favor, faça login no menu lateral esquerdo para acessar as ferramentas do sistema.
+                 </p>
+              </div>
+            </div>
+          )}
+
+          <div className={`flex-1 flex flex-col transition-all duration-700 h-full overflow-y-auto ${!currentUser ? "opacity-40 pointer-events-none select-none blur-[4px]" : ""}`}>
+            {viewMode === "admin" && currentUser ? (
+              <PainelAdmin />
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-1" id="dashboard_grid">
+                <div className={` ${sermonResult || generating ? "lg:col-span-7" : "lg:col-span-12"} space-y-6 `} id="config_col">
               
               <section className="bg-white border border-[#D1CEC5] p-6 shadow-sm" id="card_metadata">
                 <h3 className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#1A1A1A]/70 mb-6 flex items-center gap-2 pb-2 border-b border-[#D1CEC5]">
@@ -801,8 +829,10 @@ export default function App() {
                 </AnimatePresence>
               </div>
             )}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
