@@ -18,22 +18,6 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { SermonResponse, UserSession } from "./types";
 import { jsPDF } from "jspdf";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || "";
-
-const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
-  : ({
-      auth: {
-        getSession: async () => ({ data: { session: null } }),
-        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-        signUp: async () => ({ error: new Error("VITE_SUPABASE_URL e KEY não configuradas no frontend.") }),
-        signInWithPassword: async () => ({ error: new Error("VITE_SUPABASE_URL e KEY não configuradas.") }),
-        signOut: async () => {}
-      }
-    } as any);
 
 const RenderSermonText = ({ text }: { text: string }) => {
   if (!text) return null;
@@ -97,27 +81,26 @@ export default function App() {
   >("introducao");
   const [sermonResult, setSermonResult] = useState<SermonResponse | null>(null);
 
-  // Initialize session from Supabase
+  // Initialize session from localStorage
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setCurrentUser({ email: session.user.email || "" });
+    const checkSession = async () => {
+      const token = localStorage.getItem("kanon_token");
+      if (!token) return;
+      try {
+        const res = await fetch("/api/auth/session", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data && data.session && data.session.user) {
+          setCurrentUser({ email: data.session.user.email });
+        } else {
+          localStorage.removeItem("kanon_token");
+        }
+      } catch (err) {
+        console.error(err);
       }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        setCurrentUser({ email: session.user.email || "" });
-      } else {
-        setCurrentUser(null);
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
     };
+    checkSession();
   }, []);
 
   // Handle Authentication submit
@@ -135,31 +118,30 @@ export default function App() {
 
     try {
       if (authMode === "register") {
-        const { error } = await supabase.auth.signUp({
-          email: authEmail,
-          password: authPassword,
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: authEmail, password: authPassword }),
         });
-
-        if (error) {
-          if (error.message.includes("User already registered")) {
-            throw new Error("Esta conta de e-mail já está registrada.");
-          }
-          throw error;
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro no registro");
 
         setAuthSuccess("Conta criada com sucesso! Faça login para utilizá-la.");
         setAuthMode("login");
         setAuthPassword("");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: authEmail,
-          password: authPassword,
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: authEmail, password: authPassword }),
         });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro no login");
 
-        if (error) {
-          throw new Error("Usuário não encontrado ou senha incorreta.");
+        if (data.session && data.session.access_token) {
+          localStorage.setItem("kanon_token", data.session.access_token);
+          setCurrentUser({ email: data.session.user.email });
         }
-
         setAuthEmail("");
         setAuthPassword("");
         setAuthSuccess("Login efetuado com sucesso!");
@@ -172,8 +154,8 @@ export default function App() {
   };
 
   // Sign out
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
+  const handleSignOut = () => {
+    localStorage.removeItem("kanon_token");
     setCurrentUser(null);
     setSermonResult(null);
   };
@@ -247,10 +229,7 @@ export default function App() {
         },
       };
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token || "";
+      const token = localStorage.getItem("kanon_token") || "";
 
       const res = await fetch("/api/generate", {
         method: "POST",
