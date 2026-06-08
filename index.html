@@ -1,12 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kanon.app</title>
+
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0b1f38">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('Service Worker ativado com sucesso!', registration.scope);
+            })
+            .catch(erro => {
+              console.log('Falha ao ativar o Service Worker:', erro);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
