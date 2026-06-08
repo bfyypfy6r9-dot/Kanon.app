@@ -933,7 +933,49 @@ app.post("/api/generate", async (req, res) => {
         .json({ error: "Configuração de estrutura de sermão inválida." });
     }
 
-    // 1. Gather files context
+    // --- MODO ECONÔMICO: MONTAGEM DINÂMICA DO PROMPT ---
+    let partesSolicitadas = [];
+    
+    if (sections.introducao.mode === "ai") {
+      partesSolicitadas.push("1. INTRODUÇÃO: 2 parágrafos curtos. Envolva em <INTRODUCAO_START> e <INTRODUCAO_END>.");
+    }
+    if (sections.desenvolvimento.mode === "ai") {
+      partesSolicitadas.push(`2. DESENVOLVIMENTO: exatos ${numPoints || 3} pontos teológicos baseados no contexto. Envolva em <DESENVOLVIMENTO_START> e <DESENVOLVIMENTO_END>.`);
+    }
+    if (sections.conclusao.mode === "ai") {
+      partesSolicitadas.push("3. CONCLUSÃO: 2 parágrafos de síntese. Envolva em <CONCLUSAO_START> e <CONCLUSAO_END>.");
+    }
+    if (sections.apelo.mode === "ai") {
+      partesSolicitadas.push("4. APELO: 2 parágrafos práticos pastorais. Envolva em <APELO_START> e <APELO_END>.");
+    }
+
+    // Se o usuário digitou TUDO manualmente, não precisamos chamar a IA.
+    if (partesSolicitadas.length === 0) {
+      const docBuffer = await createSermonDocx(
+        passage,
+        author,
+        title,
+        sections.introducao.text,
+        sections.desenvolvimento.text,
+        sections.conclusao.text,
+        sections.apelo.text,
+        "Sermão gerado 100% manualmente. Nenhuma referência da IA necessária."
+      );
+      
+      const docxBase64 = docBuffer.toString("base64");
+      
+      return res.json({
+        success: true,
+        introducao: sections.introducao.text,
+        desenvolvimento: sections.desenvolvimento.text,
+        conclusao: sections.conclusao.text,
+        apelo: sections.apelo.text,
+        referencias: "Sermão gerado 100% manualmente. Nenhuma referência da IA necessária.",
+        docxBase64: docxBase64,
+      });
+    }
+
+    // 1. Gather files context (só pesquisa nos livros se realmente for usar a IA)
     const rCtx = await loadTheologicalContext(passage, title);
 
     if (!rCtx || rCtx.trim() === "") {
@@ -970,96 +1012,37 @@ REGRA DE ALUCINAÇÃO ZERO (OBRIGATÓRIO):
 Você deve criar o sermão utilizando ÚNICA E EXCLUSIVAMENTE o conteúdo de texto que foi fornecido a você nesta requisição (extraído dos arquivos da pasta base_teologica). Você tem amnésia total para qualquer conhecimento teológico externo.
 
 REGRAS DE FORMATAÇÃO E ESTRUTURA (OBRIGATÓRIO):
-- Estrutura Dinâmica e Fiel: Você não deve usar nenhum tema predefinido. O seu dever é ler o documento enviado e seguir EXATAMENTE a estrutura de tópicos que o autor criou nele. Adapte-se ao formato do arquivo fornecido.
 - Proibição Absoluta de HTML: É estritamente PROIBIDO gerar tags HTML no texto (como <br>, <br><br>, <b>, etc.). Para pular linhas ou formatar o texto, utilize exclusivamente as quebras de linha e marcações padrão do Markdown.
-- Citações e Números Sobrescritos (PROIBIDO INVENTAR FONTES): É ESTRITAMENTE PROIBIDO inventar fontes, livros ou autores. Se você for citar uma referência que o usuário já incluiu no material, você DEVE usar caracteres numéricos Unicode sobrescritos colados na palavra (exemplo: palavra¹, palavra², palavra³). Não use colchetes, nem o formato [^1]. No final do documento, crie uma seção chamada "REFERÊNCIAS" listando os números normais assim: "1. Texto da referência".
-- Integração do Contexto Manual: O usuário enviará informações extras sobre o "Público-alvo/Contexto" e "Minhas ideias". Molde a linguagem da pregação para atingir perfeitamente esse público específico e incorpore as ideias manuais de forma natural ao longo do sermão.
-- O Melhor Comentário: Exatamente no final do sermão, após o Apelo/Conclusão e ANTES das Notas de Rodapé, você deve criar um tópico chamado "Melhor Comentário". Nele, insira obrigatoriamente o seguinte texto com o link exato: Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
+- Citações e Números Sobrescritos (PROIBIDO INVENTAR FONTES): É ESTRITAMENTE PROIBIDO inventar fontes, livros ou autores. Se você for citar uma referência que o usuário já incluiu no material, você DEVE usar caracteres numéricos Unicode sobrescritos colados na palavra (exemplo: palavra¹, palavra², palavra³). Não use colchetes, nem o formato [^1].
+- O Melhor Comentário: Na seção de referências, inicie obrigatoriamente com o texto: Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
+
+Escreva APENAS as seções solicitadas abaixo usando EXCLUSIVAMENTE o contexto fornecido. 
+Proibido adicionar saudações ou introduções informais.
 
 DADOS METADADOS DO SERMÃO DO CLIENTE:
 - Passagem Bíblica Base: "${passage}"
 - Autor do Sermão: "${author}"
 - Título Temático: "${title}"
 - Público-alvo / Linguagem: "${targetAudience || "Geral"}"
-- Meus Rascunhos / Ideias: "${userDrafts || "Nenhum rascunho fornecido"}"
+- Meus Rascunhos / Ideias: "${userDrafts || "Nenhuma"}"
 
-CONVENÇÃO DE SEÇÕES DE CONTEÚDO:
-As quatro partes fundamentais do sermão são: Introdução, Desenvolvimento, Conclusão, Apelo.
-Abaixo estão as especificações para cada uma delas. Algumas partes foram redigidas manualmente pelo próprio pastor (e você DEVE mantê-las inalteradas), enquanto outras partes estão identificadas com "GERAR COM IA" (e você DEVE criá-las do zero usando os textos de contexto teológico fornecidos).
+SEÇÕES OBRIGATÓRIAS PARA VOCÊ GERAR AGORA:
+${partesSolicitadas.join("\n")}
 
-ESPECIFICAÇÕES DE CADA PARTE DA ESTRUTURA:
+ATENÇÃO - INCLUA OBRIGATORIAMENTE AS REFERÊNCIAS:
+<REFERENCIAS_START>
+Melhor Comentário:
+Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
 
-Parte 1 - Introdução:
-${
-  sections.introducao.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie a Introdução. Crie uma Introdução impactante com base exclusiva no contexto teológico, introduzindo e contextualizando a passagem bíblica e o tema. A introdução deve ser curta, contendo exatamente 2 (dois) parágrafos. NÃO escreva título ou autor nela."
-    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
-      sections.introducao.text +
-      '" (Não mude sequer uma vírgula ou letra deste texto, replique-o fielmente).'
-}
-
-Parte 2 - Desenvolvimento:
-${
-  sections.desenvolvimento.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie o Desenvolvimento do sermão focado especificamente em exatamente " +
-      (numPoints || 3) +
-      " pontos teológicos detalhados. Processe as referências e os documentos da base teológica (RAG) para redigir o desenvolvimento de forma robusta e baseada no contexto histórico. NÃO escreva a palavra 'Desenvolvimento', comece direto do primeiro ponto numerado."
-    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
-      sections.desenvolvimento.text +
-      '" (Não altere este texto manual em hipótese alguma).'
-}
-
-Parte 3 - Conclusão:
-${
-  sections.conclusao.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie uma Conclusão profunda e consolidada em exatamente 2 (dois) parágrafos. NÃO escreva a palavra 'Conclusão', comece o texto direto."
-    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
-      sections.conclusao.text +
-      '" (Não mexa no texto digitado).'
-}
-
-Parte 4 - Apelo:
-${
-  sections.apelo.mode === "ai"
-    ? "O usuário selecionou Gerar com IA. Crie um Apelo pastoral poderoso em exatamente 2 (dois) parágrafos. NÃO escreva o encabeçamento 'Apelo', comece com os tópicos direto."
-    : 'O usuário selecionou Digitar Manualmente. MANTENHA O TEXTO DIGITADO PELO AUTOR EXATAMENTE IGUAL: "' +
-      sections.apelo.text +
-      '" (Mantenha-o intacto).'
-}
+[Liste aqui as Notas de Rodapé criadas no formato numérico listado. Exemplo: 1. Livro x, Pág y]
+<REFERENCIAS_END>
 
 ----------------------------------------------------
 CONTEXTO TEOLÓGICO SEGURO (Fórmula RAG):
 ${rCtx}
 ----------------------------------------------------
-
-Por favor, escreva o sermão de modo estruturado e polido.
-Para nos ajudar a parsear e modularizar o sermão no site, sua resposta DEVE seguir EXATAMENTE o formulário e os delimitadores XML abaixo no corpo de texto gerado, sem NENHUM caractere markdown oculto. Estas tags delimitadoras são as ÚNICAS "tags" permitidas:
-
-<INTRODUCAO_START>
-(Texto da introdução)
-<INTRODUCAO_END>
-
-<DESENVOLVIMENTO_START>
-(Texto do desenvolvimento estruturado em formato Markdown sem HTML)
-<DESENVOLVIMENTO_END>
-
-<CONCLUSAO_START>
-(Texto da conclusão)
-<CONCLUSAO_END>
-
-<APELO_START>
-(Texto do apelo pastoral)
-<APELO_END>
-
-<REFERENCIAS_START>
-Melhor Comentário:
-Quer aprofundar seu estudo? Descubra o melhor comentário bíblico para este livro acessando o site: https://bestcommentaries.com/
-
-(Lista de Notas de Rodapé usadas no texto acima)
-<REFERENCIAS_END>
-
-Rigor absoluto: O sermão deve soar coerente, articulado, respeitando estritamente a verdade teológica dos textos sem inventar.
 `;
+    // --- FIM DO MODO ECONÔMICO ---
 
     // 4. Query model serializado na mesma fila global para proteger a API do Gemini
     const release = await geminiMutex.acquire();
