@@ -1,0 +1,21 @@
+{
+  "name": "Construtor de Sermões",
+  "short_name": "Sermões",
+  "description": "Aplicativo para construção de sermões com base teológica.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b1f38",
+  "icons": [
+    {
+      "src": "/icone-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icone-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
